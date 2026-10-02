@@ -302,32 +302,21 @@
       #checkpoint-overlay-panel { padding: 24px 20px 20px; border-radius: 16px; }
     }
 
-    /* WEB-PHASE-4 REDO Phase 7: full-screen "light speed" transition flash,
-       played by src/vehicle/lightspeed.ts right before a checkpoint overlay
-       actually opens and again right before it actually closes. A first-pass
-       radiating-streaks + white-flash look (no visual reference yet) -- see
-       lightspeed.ts for the plan to refine this once the user's own
-       reference is shared. z-index sits above the checkpoint overlay (30) so
-       it fully covers the transition in both directions. */
+    /* WEB-PHASE-4 REDO Phase 8: full-screen "light speed" transition, played
+       by src/vehicle/lightspeed.ts right before a checkpoint overlay actually
+       opens and again right before it actually closes -- a real Three.js
+       warp-tunnel scene (streaks + a wide-FOV camera) built from the user's
+       own Blender tutorial reference, rendered into a canvas this div holds.
+       This div itself just cross-fades in/out around that canvas; z-index
+       sits above the checkpoint overlay (30) so it fully covers the cut in
+       both directions. */
     #lightspeed-overlay {
       position: fixed; inset: 0; z-index: 50;
       pointer-events: none;
       opacity: 0;
-      background:
-        radial-gradient(circle at 50% 50%, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.4) 16%, rgba(150,205,255,0.18) 34%, transparent 58%),
-        repeating-conic-gradient(from 0deg, rgba(255,255,255,0.92) 0deg 1.1deg, transparent 1.1deg 6deg);
-      mix-blend-mode: screen;
-      transform: scale(0.15) rotate(0deg);
-      will-change: transform, opacity;
+      transition: opacity 0.12s ease;
     }
-    #lightspeed-overlay.is-active { animation: lightspeed-flash 1s ease-in forwards; }
-    @keyframes lightspeed-flash {
-      0%   { opacity: 0;    transform: scale(0.15) rotate(0deg); }
-      12%  { opacity: 1;    transform: scale(0.6)  rotate(6deg); }
-      45%  { opacity: 1;    transform: scale(2.2)  rotate(18deg); }
-      75%  { opacity: 0.85; transform: scale(3.6)  rotate(26deg); }
-      100% { opacity: 0;    transform: scale(4.6)  rotate(32deg); }
-    }
+    #lightspeed-overlay.is-active { opacity: 1; }
   </style>
 </head>
 <body>
