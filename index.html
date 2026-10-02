@@ -197,12 +197,20 @@
       transition: transform 0.28s ease;
     }
     #checkpoint-overlay.is-open #checkpoint-overlay-panel { transform: translateY(0); }
-    /* WEB-PHASE-4 REDO Phase 7: while a checkpoint's menu is open, the panel's
-       own colors are inverted (see requestOpenOverlay/requestCloseOverlay in
-       overlay.ts) for the "entered the terminal's data-space" feel the user
-       asked for. hue-rotate(180deg) alongside invert(1) keeps it reading as a
-       coherent flipped palette rather than a harsh raw negative. */
-    #checkpoint-overlay-panel.is-inverted { filter: invert(1) hue-rotate(180deg); }
+    /* WEB-PHASE-4 REDO Phase 9: while a checkpoint's menu is open, the main
+       driving-scene canvas (not the glass panel) is inverted (see
+       requestOpenOverlay/requestCloseOverlay in overlay.ts) -- "a parallel
+       inverted universe" after the light-speed jump: car, sky, ocean,
+       everything the canvas renders. #checkpoint-overlay's own
+       backdrop-filter blur sits on top of #app in the stacking order, so the
+       blurred glass backdrop automatically shows this inverted scene while
+       the panel itself (and its text) stays normal and directly legible, with
+       no separate transition -- the swap happens while the light-speed
+       overlay (z-index 50, above both) is still opaque, so nothing
+       uninverted is ever visible in between. hue-rotate(180deg) alongside
+       invert(1) keeps it reading as a coherent flipped palette rather than a
+       harsh raw negative. */
+    #app.is-inverted { filter: invert(1) hue-rotate(180deg); }
     .checkpoint-overlay__close {
       position: absolute; top: 16px; right: 16px;
       width: 32px; height: 32px; border-radius: 50%;

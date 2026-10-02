@@ -50,6 +50,37 @@ function roadMatchingMaterial(root: THREE.Object3D): THREE.MeshStandardMaterial 
   return new THREE.MeshStandardMaterial({ color: 0x3f4248, roughness: 1, metalness: 0 })
 }
 
+// WEB-PHASE-4 REDO Phase 9: the cap's painted-line arc was originally a
+// guessed bright off-white (0xf0f0f0), which the user flagged as not
+// matching the real road's own lane-marking color. Probed the real
+// environment.glb directly: every real RoadDetail_Center_*/Edge_* lane
+// marking on all three destination roads uses the exact same material,
+// MAT_LaneMark_PORT (a dark slate teal, #273f45, roughness 0.6, metalness 0)
+// -- not white at all. This copies that real material the same way
+// roadMatchingMaterial copies MAT_ROAD, so the cap's line reads as a literal
+// continuation of the real lane marking, not an invented color.
+function laneMarkingMaterial(root: THREE.Object3D): THREE.MeshStandardMaterial {
+  let found: THREE.MeshStandardMaterial | null = null
+  root.traverse((o) => {
+    if (found) return
+    const mesh = o as THREE.Mesh
+    if (!mesh.isMesh) return
+    const mat = mesh.material as THREE.MeshStandardMaterial
+    if (mat && !Array.isArray(mesh.material) && mat.name === 'MAT_LaneMark_PORT') found = mat
+  })
+  if (found) {
+    const src = found as THREE.MeshStandardMaterial
+    return new THREE.MeshStandardMaterial({
+      color: src.color.clone(),
+      roughness: src.roughness,
+      metalness: src.metalness
+    })
+  }
+  // Fallback (should not happen -- MAT_LaneMark_PORT is confirmed present on
+  // all three destination roads): the same real color, hardcoded.
+  return new THREE.MeshStandardMaterial({ color: 0x273f45, roughness: 0.6, metalness: 0 })
+}
+
 function buildCapShape(radius: number): THREE.Shape {
   // Local space: flat diameter edge lies along local X at y=0 (from -r to r),
   // the arc bulges toward local -Y. After geo.rotateX(-PI/2) (same convention
@@ -79,10 +110,10 @@ function buildCapLineGeometry(radius: number, lineWidth: number): THREE.RingGeom
 
 export function addRoadEndCaps(scene: THREE.Scene, root: THREE.Object3D, defs: RoadEndCapDef[]): void {
   const mat = roadMatchingMaterial(root)
-  // Plain bright off-white, matching the look of this project's existing
-  // RoadDetail_Edge_*/Center_* lane-marking meshes -- not tied to any locked
-  // material, since this is new, additive content.
-  const lineMat = new THREE.MeshBasicMaterial({ color: 0xf0f0f0 })
+  // The cap's line now copies the real MAT_LaneMark_PORT lane-marking color
+  // (see laneMarkingMaterial above) instead of a guessed white, so it reads
+  // as the same lane marking continuing into the semicircle, not a new tone.
+  const lineMat = laneMarkingMaterial(root)
   for (const def of defs) {
     const geo = new THREE.ShapeGeometry(buildCapShape(def.radius), 32)
     geo.rotateX(-Math.PI / 2)

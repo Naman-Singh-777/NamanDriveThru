@@ -17,6 +17,13 @@ const TITLES: Record<CheckpointId, string> = {
 
 let overlayEl: HTMLElement
 let panelEl: HTMLElement
+// WEB-PHASE-4 REDO Phase 9: the main driving-scene canvas -- this, not the
+// glass panel, is what gets inverted during a checkpoint visit (see
+// requestOpenOverlay/requestCloseOverlay below). The backdrop-filter blur on
+// #checkpoint-overlay already samples whatever's behind it, so inverting the
+// canvas makes the blurred backdrop read as an inverted parallel-universe
+// environment while the panel itself stays a normal, legible glass surface.
+let appEl: HTMLElement
 let titleEl: HTMLElement
 let bodyEl: HTMLElement
 let closeBtn: HTMLElement
@@ -110,39 +117,59 @@ function renderMessage(msg: string): string {
 
 // GitHub's public REST API has no unauthenticated "pinned repos" endpoint —
 // pinned items are GraphQL-only, and GraphQL requires a token this static
-// client-side site must never embed (see externalLinks.ts). We use the
-// no-auth, read-only community endpoint below (the same approach most
-// "GitHub pinned repos" profile widgets use). WEB-PHASE-4 REDO Phase 7: the
-// earlier "recently pushed" fallback is REMOVED per explicit request — Port
-// must only ever show repos actually pinned on the GitHub profile, never a
-// substitute list; if the pinned endpoint is unreachable or empty this now
-// surfaces an honest "couldn't load" message instead (see renderPort below),
-// rather than silently showing non-pinned repos.
-async function fetchPortProjects(username: string): Promise<{ name: string; description: string; href: string }[]> {
-  const res = await fetch(`https://gh-pinned-repos.egoist.dev/?username=${encodeURIComponent(username)}`)
-  if (!res.ok) throw new Error(`pinned endpoint ${res.status}`)
-  const pinned = (await res.json()) as { repo: string; owner: string; description: string | null }[]
-  if (!Array.isArray(pinned)) throw new Error('malformed pinned list')
+// client-side site must never embed (see externalLinks.ts). We used the
+// no-auth, read-only community endpoint https://gh-pinned-repos.egoist.dev
+// (the same approach most "GitHub pinned repos" profile widgets use), but
+// WEB-PHASE-4 REDO Phase 9 confirmed that endpoint is now dead (404 on every
+// request, including its bare root — not a rate limit, not CORS, the service
+// itself is gone). Per the explicit new priority ("GITHUB LINKS SHOULD BE
+// ACCESSIBLE AT ALL TIMES"), Port now tries that endpoint first (in case it
+// or a future live source ever returns something), and falls back to the
+// snapshot below — the user's actual pinned repos as read directly off their
+// public GitHub profile page on 2026-10-03 — rather than an honest-but-
+// useless error message. This is NOT the Phase-6 "recently pushed" fallback
+// the user asked removed (that showed unrelated, non-pinned repos); this is
+// a cached copy of the real pinned list itself, used only when the live
+// fetch can't be reached. Update this array by hand if the pinned repos on
+// github.com/Naman-Singh-777 ever change.
+const PINNED_REPOS_FALLBACK: { name: string; description: string; href: string }[] = [
+  { name: 'SmartStack', description: 'A system that reduces AI operational costs by 40-50% through query routing and resource optimization.', href: 'https://github.com/Naman-Singh-777/SmartStack' },
+  { name: 'WhereAbouts_SE', description: 'Full-stack college event management platform (Next.js + Supabase) for student event discovery and registration.', href: 'https://github.com/Naman-Singh-777/WhereAbouts_SE' },
+  { name: 'Career-Nexus', description: 'AI-powered career trajectory engine (Gemini) that parses resumes and builds learning roadmaps.', href: 'https://github.com/Naman-Singh-777/Career-Nexus' },
+  { name: 'Portfolio-Websiteeeee', description: 'This portfolio website.', href: 'https://github.com/Naman-Singh-777/Portfolio-Websiteeeee' }
+]
 
-  return Promise.all(
-    pinned.map(async (p) => {
-      const owner = p.owner || username
-      let href = `https://github.com/${owner}/${p.repo}`
-      let description = p.description || ''
-      try {
-        const detail = await fetch(`https://api.github.com/repos/${owner}/${p.repo}`)
-        if (detail.ok) {
-          const d = (await detail.json()) as { homepage?: string | null; html_url: string; description?: string | null }
-          if (d.homepage && d.homepage.trim()) href = d.homepage.trim()
-          else href = d.html_url
-          description = description || d.description || ''
+async function fetchPortProjects(username: string): Promise<{ name: string; description: string; href: string }[]> {
+  try {
+    const res = await fetch(`https://gh-pinned-repos.egoist.dev/?username=${encodeURIComponent(username)}`)
+    if (!res.ok) throw new Error(`pinned endpoint ${res.status}`)
+    const pinned = (await res.json()) as { repo: string; owner: string; description: string | null }[]
+    if (!Array.isArray(pinned) || pinned.length === 0) throw new Error('empty/malformed pinned list')
+
+    return await Promise.all(
+      pinned.map(async (p) => {
+        const owner = p.owner || username
+        let href = `https://github.com/${owner}/${p.repo}`
+        let description = p.description || ''
+        try {
+          const detail = await fetch(`https://api.github.com/repos/${owner}/${p.repo}`)
+          if (detail.ok) {
+            const d = (await detail.json()) as { homepage?: string | null; html_url: string; description?: string | null }
+            if (d.homepage && d.homepage.trim()) href = d.homepage.trim()
+            else href = d.html_url
+            description = description || d.description || ''
+          }
+        } catch {
+          // homepage lookup failed — keep the plain repo link already set above
         }
-      } catch {
-        // homepage lookup failed — keep the plain repo link already set above
-      }
-      return { name: p.repo, description, href }
-    })
-  )
+        return { name: p.repo, description, href }
+      })
+    )
+  } catch {
+    // Live source unreachable/empty — fall back to the real pinned-repo
+    // snapshot above so Port's GitHub links are never just an error message.
+    return PINNED_REPOS_FALLBACK
+  }
 }
 
 function driveSectionHtml(): string {
@@ -352,7 +379,7 @@ export function requestOpenOverlay(id: CheckpointId): void {
   transitioning = true
   void playLightspeed().then(() => {
     openOverlay(id)
-    panelEl.classList.add('is-inverted')
+    appEl.classList.add('is-inverted')
     transitioning = false
   })
 }
@@ -365,7 +392,7 @@ function requestCloseOverlay(): void {
   if (transitioning || openId === null) return
   transitioning = true
   void playLightspeed().then(() => {
-    panelEl.classList.remove('is-inverted')
+    appEl.classList.remove('is-inverted')
     closeOverlay()
     transitioning = false
   })
@@ -382,6 +409,7 @@ export function initOverlay(onClose: () => void): void {
   bodyEl = document.getElementById('checkpoint-overlay-body')!
   closeBtn = document.getElementById('checkpoint-overlay-close')!
   platformHolderEl = document.getElementById('checkpoint-platform-holder')!
+  appEl = document.getElementById('app')!
   onCloseCb = onClose
 
   closeBtn.addEventListener('click', requestCloseOverlay)

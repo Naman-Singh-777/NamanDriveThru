@@ -9,9 +9,12 @@
 //   this static client-side site must never embed, per WEB-PHASE-4 security
 //   rules). We call the no-auth, read-only community endpoint
 //   https://gh-pinned-repos.egoist.dev (same approach used by most
-//   "pinned repos" GitHub-profile widgets) and fall back to the user's most-
-//   recently-pushed public repos via the official REST API if that call
-//   fails. See src/overlay.ts.
+//   "pinned repos" GitHub-profile widgets); as of WEB-PHASE-4 REDO Phase 9
+//   that endpoint is confirmed dead, so Port falls back to a hand-updated
+//   snapshot of the real pinned repos (PINNED_REPOS_FALLBACK in
+//   src/overlay.ts) whenever the live call fails — never a "recently
+//   pushed"/non-pinned substitute, and never a bare error message. See
+//   src/overlay.ts.
 // - driveUrl/driveLabel: an extra, separately-headed link shown above the
 //   Port project menu (e.g. a video portfolio folder) — optional, omitted
 //   entirely when driveUrl is empty.
