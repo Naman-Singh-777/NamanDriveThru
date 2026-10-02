@@ -1,0 +1,20 @@
+node_modules/
+dist/
+dist_*/
+*.tsbuildinfo
+vite.*.config.mjs
+vite.*.config.mjs.timestamp-*.mjs
+vite.config.ts.timestamp-*.mjs
+_webfix11_scratch/
+_diag_scratch_done/
+.DS_Store
+Thumbs.db
+*.log
+.env
+.env.local
+
+# Local dev-process artifacts (recovery checkpoints, headless test harness) --
+# not part of the shipped app, never committed.
+WEB_CHECKPOINT_*/
+_rescale_sandbox/
+vite_log*.txt

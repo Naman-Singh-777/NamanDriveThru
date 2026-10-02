@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Naman Singh — Interactive 3D Driving Portfolio</title>
+  <meta name="description" content="Drive a 3D car through an interactive Three.js + Rapier physics world to explore Naman Singh's projects, music and socials. Built with TypeScript, Three.js, Vite and Blender." />
+  <meta name="author" content="Naman Singh" />
+  <link rel="canonical" href="https://naman-singh-777.github.io/Portfolio-Websiteeeee/" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Naman Singh — Interactive 3D Driving Portfolio" />
+  <meta property="og:description" content="Drive a 3D car through an interactive world built with Three.js and Rapier physics to explore my projects, music and socials." />
+  <meta property="og:url" content="https://naman-singh-777.github.io/Portfolio-Websiteeeee/" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Naman Singh — Interactive 3D Driving Portfolio" />
+  <meta name="twitter:description" content="Drive a 3D car through an interactive world built with Three.js and Rapier physics to explore my projects, music and socials." />
+
+  <style>
+    html, body { margin: 0; padding: 0; overflow: hidden; background: #05070d; height: 100%; overscroll-behavior: none; }
+    #app { width: 100vw; height: 100vh; display: block; touch-action: none; }
+    #loading {
+      position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 12px; background: #05070d; color: #cfe0ff;
+      font-family: system-ui, sans-serif; z-index: 10;
+    }
+    #loading .bar { width: 260px; height: 4px; background: #1a2236; border-radius: 2px; overflow: hidden; }
+    #loading .fill { height: 100%; width: 0%; background: #6fb8ff; transition: width 0.15s ease; }
+    #error {
+      position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+      background: #1a0808; color: #ffb4b4; font-family: monospace; font-size: 14px;
+      padding: 24px; text-align: center; z-index: 20; white-space: pre-wrap;
+    }
+
+    /* Smaller/short viewports (phones, esp. landscape with little vertical
+       room): shrink the loading UI proportionally instead of it dominating
+       the screen. */
+    @media (max-width: 760px), (max-height: 500px) {
+      #loading { font-size: 14px; gap: 8px; }
+      #loading .bar { width: 46vw; max-width: 220px; min-width: 120px; }
+    }
+
+    /* On-screen touch controls: a colourless/translucent D-pad (accelerate,
+       reverse, steer) plus a separate brake button, bound in
+       src/vehicle/touchControls.ts. Hidden entirely on mouse/trackpad devices
+       -- only shown for coarse (touch) pointers, i.e. phones/tablets. */
+    #touch-controls {
+      position: fixed; inset: 0; z-index: 15;
+      display: none; /* overridden to flex/contents under (pointer: coarse) below */
+      pointer-events: none;
+    }
+    .touch-btn {
+      background: rgba(255, 255, 255, 0.10);
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      color: rgba(255, 255, 255, 0.80);
+      -webkit-tap-highlight-color: transparent;
+      touch-action: none;
+      user-select: none;
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      display: flex; align-items: center; justify-content: center;
+      pointer-events: auto;
+    }
+    .touch-btn:active { background: rgba(255, 255, 255, 0.28); }
+
+    /* Left side: forward/reverse only, stacked vertically. */
+    #pedals {
+      position: absolute;
+      left: max(18px, 2.5vw);
+      bottom: max(18px, 3vh);
+      display: flex;
+      flex-direction: column;
+      gap: clamp(10px, 2vmin, 16px);
+    }
+    #pedals .touch-btn {
+      width: clamp(66px, 15vmin, 98px);
+      height: clamp(66px, 15vmin, 98px);
+      border-radius: 16px;
+      font-size: clamp(22px, 5.5vmin, 32px);
+    }
+
+    /* Right side: steer left -- brake -- steer right, in one row so brake
+       sits directly between the two steering buttons. */
+    #steer {
+      position: absolute;
+      right: max(18px, 2.5vw);
+      bottom: max(18px, 3vh);
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: clamp(10px, 2vmin, 16px);
+    }
+    #touch-btn-left, #touch-btn-right {
+      width: clamp(66px, 15vmin, 98px);
+      height: clamp(66px, 15vmin, 98px);
+      border-radius: 16px;
+      font-size: clamp(22px, 5.5vmin, 32px);
+    }
+    #touch-btn-brake {
+      width: clamp(74px, 16.5vmin, 106px);
+      height: clamp(74px, 16.5vmin, 106px);
+      border-radius: 50%;
+      border-width: 2px;
+      font: 700 clamp(12px, 2.6vmin, 15px) / 1 system-ui, sans-serif;
+      letter-spacing: 0.06em;
+    }
+
+    @media (pointer: coarse) {
+      #touch-controls { display: block; }
+    }
+
+    /* Guaranteed landscape fallback: true orientation-locking (attempted in
+       touchControls.ts) only works on some Android browsers and never on iOS
+       Safari, so a touch device left in portrait gets a blocking prompt
+       instead of a cramped/unplayable layout. */
+    #rotate-overlay {
+      position: fixed; inset: 0; z-index: 50;
+      display: none;
+      align-items: center; justify-content: center;
+      flex-direction: column; gap: 14px;
+      background: #05070d; color: rgba(255, 255, 255, 0.85);
+      font-family: system-ui, sans-serif; text-align: center; padding: 24px;
+    }
+    #rotate-overlay .icon { font-size: 44px; }
+    @media (pointer: coarse) and (orientation: portrait) {
+      #rotate-overlay { display: flex; }
+    }
+
+    /* WEB-PHASE-4: checkpoint "OPEN <Enter>" prompt -- a small screen-space
+       label positioned every frame (src/vehicle/checkpoint.ts) above whichever
+       world-space checkpoint pad the car is currently inside. Restrained,
+       not a big HUD element: a thin glass pill, quiet by default, that only
+       brightens on hover-adjacent proximity (it's only ever shown while
+       active at all). */
+    .checkpoint-prompt {
+      position: fixed; left: 0; top: 0; z-index: 12;
+      display: none; align-items: center; gap: 7px;
+      padding: 7px 14px 7px 16px;
+      border-radius: 999px;
+      background: rgba(12, 18, 30, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.28);
+      backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+      color: rgba(255, 255, 255, 0.92);
+      font: 600 12.5px/1 system-ui, sans-serif;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      pointer-events: none;
+      box-shadow: 0 0 18px rgba(130, 180, 255, 0.18);
+      animation: checkpoint-prompt-breathe 2.6s ease-in-out infinite;
+    }
+    .checkpoint-prompt__enter { display: flex; color: rgba(255, 255, 255, 0.85); }
+    @keyframes checkpoint-prompt-breathe {
+      0%, 100% { box-shadow: 0 0 14px rgba(130, 180, 255, 0.14); }
+      50% { box-shadow: 0 0 22px rgba(130, 180, 255, 0.30); }
+    }
+
+    /* WEB-PHASE-4: shared full-screen glass overlay the three checkpoints
+       open into (src/overlay.ts). Frosted/translucent -- the 3D scene behind
+       it keeps rendering and stays visible, dimmed and blurred, never fully
+       hidden. Not a generic opaque HTML modal. */
+    #checkpoint-overlay {
+      position: fixed; inset: 0; z-index: 30;
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px;
+      opacity: 0; visibility: hidden;
+      transition: opacity 0.28s ease;
+      background: rgba(5, 8, 14, 0.46);
+      backdrop-filter: blur(14px) saturate(1.1);
+      -webkit-backdrop-filter: blur(14px) saturate(1.1);
+    }
+    #checkpoint-overlay.is-open { opacity: 1; visibility: visible; }
+    #checkpoint-overlay-panel {
+      position: relative;
+      width: min(560px, 100%);
+      max-height: min(640px, 86vh);
+      display: flex; flex-direction: column;
+      background: linear-gradient(165deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.035));
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      border-radius: 20px;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+      padding: 30px 30px 24px;
+      color: rgba(255, 255, 255, 0.94);
+      font-family: system-ui, sans-serif;
+      transform: translateY(8px);
+      transition: transform 0.28s ease;
+    }
+    #checkpoint-overlay.is-open #checkpoint-overlay-panel { transform: translateY(0); }
+    .checkpoint-overlay__close {
+      position: absolute; top: 16px; right: 16px;
+      width: 32px; height: 32px; border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      background: rgba(255, 255, 255, 0.06);
+      color: rgba(255, 255, 255, 0.85);
+      font-size: 18px; line-height: 1;
+      cursor: pointer;
+    }
+    .checkpoint-overlay__close:hover { background: rgba(255, 255, 255, 0.16); }
+    .checkpoint-overlay__title {
+      margin: 0 0 18px; font-size: 13px; font-weight: 700;
+      letter-spacing: 0.22em; text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.7);
+    }
+    .checkpoint-overlay__body { overflow-y: auto; flex: 1; }
+    .checkpoint-overlay__empty { color: rgba(255, 255, 255, 0.55); font-size: 14px; margin: 8px 0; }
+    .checkpoint-overlay__menu, .checkpoint-overlay__social { list-style: none; margin: 0; padding: 0; }
+    .checkpoint-overlay__menu li, .checkpoint-overlay__social li {
+      border-top: 1px solid rgba(255, 255, 255, 0.10);
+      padding: 14px 2px;
+      display: flex; flex-direction: column; gap: 3px;
+    }
+    .checkpoint-overlay__menu li:first-child, .checkpoint-overlay__social li:first-child { border-top: none; }
+    .checkpoint-overlay__menu a, .checkpoint-overlay__social a {
+      color: rgba(255, 255, 255, 0.95); text-decoration: none;
+      font-size: 16px; font-weight: 600; letter-spacing: 0.01em;
+    }
+    .checkpoint-overlay__menu a:hover, .checkpoint-overlay__social a:hover { color: #9cc4ff; }
+    .checkpoint-overlay__desc { color: rgba(255, 255, 255, 0.5); font-size: 13px; }
+    .checkpoint-overlay__spotify { border-radius: 12px; margin-bottom: 14px; display: block; }
+    .checkpoint-overlay__section-heading {
+      margin: 0 0 10px; font-size: 11px; font-weight: 700;
+      letter-spacing: 0.18em; text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.45);
+    }
+    .checkpoint-overlay__section-heading:not(:first-child) { margin-top: 20px; }
+
+    /* WEB-PHASE-4 REDO: off-screen (never display:none, so playback is never
+       suspended) home for the Platform checkpoint's Spotify embed iframe(s)
+       while the overlay is closed -- see overlay.ts. Reparenting an iframe
+       between DOM locations does not reload it in any evergreen browser, so
+       this is what lets a selected track/album keep playing in the
+       background while driving, same as leaving a Spotify tab open. */
+    .checkpoint-platform-holder {
+      position: fixed; left: -99999px; top: -99999px;
+      width: 1px; height: 1px; overflow: hidden; pointer-events: none;
+    }
+
+    @media (max-width: 560px) {
+      #checkpoint-overlay-panel { padding: 24px 20px 20px; border-radius: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div>Loading environment&hellip;</div>
+    <div class="bar"><div class="fill" id="loading-fill"></div></div>
+  </div>
+  <div id="error"></div>
+  <canvas id="app"></canvas>
+
+  <div id="touch-controls">
+    <div id="pedals">
+      <div id="touch-btn-up" class="touch-btn" aria-label="Accelerate">&#9650;</div>
+      <div id="touch-btn-down" class="touch-btn" aria-label="Reverse">&#9660;</div>
+    </div>
+    <div id="steer">
+      <div id="touch-btn-left" class="touch-btn" aria-label="Steer left">&#9664;</div>
+      <div id="touch-btn-brake" class="touch-btn" aria-label="Brake">BRAKE</div>
+      <div id="touch-btn-right" class="touch-btn" aria-label="Steer right">&#9654;</div>
+    </div>
+  </div>
+
+  <div id="rotate-overlay">
+    <div class="icon">&#8635;</div>
+    <div>Rotate your device to landscape<br />for the best driving experience</div>
+  </div>
+
+  <!-- WEB-PHASE-4: shared checkpoint overlay shell -- src/overlay.ts fills
+       #checkpoint-overlay-body per checkpoint; the floating "OPEN <Enter>"
+       prompts are created/positioned by src/vehicle/checkpoint.ts and need
+       no static markup here. -->
+  <div id="checkpoint-overlay" aria-hidden="true">
+    <div id="checkpoint-overlay-panel" role="dialog" aria-modal="true" aria-labelledby="checkpoint-overlay-title">
+      <button id="checkpoint-overlay-close" aria-label="Close" type="button">&times;</button>
+      <h2 id="checkpoint-overlay-title" class="checkpoint-overlay__title"></h2>
+      <div id="checkpoint-overlay-body" class="checkpoint-overlay__body"></div>
+    </div>
+  </div>
+
+  <!-- WEB-PHASE-4 REDO: persistent off-screen home for the Platform
+       checkpoint's Spotify iframe(s) so music keeps playing in the
+       background across overlay close/reopen -- see overlay.ts. -->
+  <div id="checkpoint-platform-holder" class="checkpoint-platform-holder" aria-hidden="true"></div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
