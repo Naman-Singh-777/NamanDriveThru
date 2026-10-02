@@ -175,17 +175,109 @@ async function renderPort(): Promise<void> {
   }
 }
 
-function renderPlatform(): void {
+// WEB-PHASE-4 REDO Phase 6: Platform now opens into a browsable menu of
+// configured albums/playlists (cover art + title, fetched from Spotify's own
+// public no-auth oEmbed endpoint — no API key/OAuth, same spirit as the
+// embed widget itself) and only shows a specific player once one is picked —
+// "the songs come after". Adding a new entry to externalLinks.spotifyEmbeds
+// is all a future playlist needs; nothing else in this file changes.
+interface SpotifyOEmbedInfo {
+  title: string
+  thumbnailUrl: string
+}
+const oEmbedCache = new Map<string, SpotifyOEmbedInfo>()
+
+async function fetchSpotifyOEmbed(type: string, id: string): Promise<SpotifyOEmbedInfo | null> {
+  const cached = oEmbedCache.get(id)
+  if (cached) return cached
+  try {
+    const canonical = `https://open.spotify.com/${type}/${id}`
+    const res = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(canonical)}`)
+    if (!res.ok) return null
+    const data = await res.json()
+    const info: SpotifyOEmbedInfo = { title: typeof data.title === 'string' ? data.title : 'Untitled', thumbnailUrl: typeof data.thumbnail_url === 'string' ? data.thumbnail_url : '' }
+    oEmbedCache.set(id, info)
+    return info
+  } catch {
+    return null
+  }
+}
+
+// Moves every cached Spotify iframe back into the off-screen holder — same
+// "never destroy, just reparent" technique closeOverlay() already uses, so
+// whatever is playing keeps playing uninterrupted while browsing the menu or
+// switching to a different playlist.
+function parkAllPlatformIframes(): void {
+  for (const el of platformIframes.values()) platformHolderEl.appendChild(el)
+}
+
+async function renderPlatformMenu(): Promise<void> {
   const embeds = externalLinks.spotifyEmbeds
+  parkAllPlatformIframes()
   if (embeds.length === 0) {
     bodyEl.innerHTML = renderMessage('Spotify not configured yet.')
     return
   }
-  bodyEl.innerHTML = ''
-  for (const embed of embeds) {
-    const iframe = getOrCreatePlatformIframe(embed.type, embed.id)
-    bodyEl.appendChild(iframe) // moves the SAME node back in — playback state/position is untouched
+  bodyEl.innerHTML = `
+    <h3 class="checkpoint-overlay__section-heading">Playlists</h3>
+    <ul class="checkpoint-overlay__spotify-menu">
+      ${embeds
+        .map(
+          (e, i) => `
+        <li class="checkpoint-overlay__spotify-card" data-embed-index="${i}" tabindex="0" role="button">
+          <span class="checkpoint-overlay__spotify-cover" data-cover-index="${i}"></span>
+          <span class="checkpoint-overlay__spotify-title" data-title-index="${i}">Loading&hellip;</span>
+        </li>`
+        )
+        .join('')}
+    </ul>
+  `
+  const cards = Array.from(bodyEl.querySelectorAll<HTMLLIElement>('.checkpoint-overlay__spotify-card'))
+  cards.forEach((card, i) => {
+    const activate = () => {
+      if (openId !== 'platform') return
+      showPlatformPlayer(embeds[i].type, embeds[i].id)
+    }
+    card.addEventListener('click', activate)
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        activate()
+      }
+    })
+  })
+  for (let i = 0; i < embeds.length; i++) {
+    const embed = embeds[i]
+    void fetchSpotifyOEmbed(embed.type, embed.id).then((info) => {
+      if (openId !== 'platform') return // overlay closed/changed while this was in flight
+      const coverEl = bodyEl.querySelector<HTMLElement>(`[data-cover-index="${i}"]`)
+      const titleEl2 = bodyEl.querySelector<HTMLElement>(`[data-title-index="${i}"]`)
+      if (!coverEl || !titleEl2) return // menu already replaced by a selected player
+      if (info) {
+        if (info.thumbnailUrl) coverEl.style.backgroundImage = `url('${info.thumbnailUrl.replace(/'/g, "%27")}')`
+        titleEl2.textContent = info.title
+      } else {
+        titleEl2.textContent = embed.type.charAt(0).toUpperCase() + embed.type.slice(1)
+      }
+    })
   }
+}
+
+function showPlatformPlayer(type: string, id: string): void {
+  const iframe = getOrCreatePlatformIframe(type, id)
+  bodyEl.innerHTML = `
+    <button type="button" class="checkpoint-overlay__back-link">&larr; Back to playlists</button>
+    <div class="checkpoint-overlay__spotify-player"></div>
+  `
+  bodyEl.querySelector('.checkpoint-overlay__spotify-player')!.appendChild(iframe) // same node — playback untouched
+  bodyEl.querySelector('.checkpoint-overlay__back-link')!.addEventListener('click', () => {
+    if (openId !== 'platform') return
+    void renderPlatformMenu()
+  })
+}
+
+function renderPlatform(): void {
+  void renderPlatformMenu()
 }
 
 function renderCity(): void {

@@ -1,18 +1,21 @@
 import * as THREE from 'three'
 import type { Vehicle } from './vehicle'
+import { playRadioStatic } from './checkpointAudio'
 
-// WEB-PHASE-4 REDO: world-space interactive checkpoints (Port / Platform /
-// City). Original design, not a copy of any external reference — a
-// translucent glass rounded-rect pad embedded in the ground plane with an
-// emissive pulsing edge, a slow scanning highlight, a location-specific
-// procedural pattern (no new textures/geometry — pure shader), and a one-shot
-// floor-originating reveal (radial iris + expanding ring) that plays once
-// each pad first comes alive. A small screen-projected "OPEN <Enter-glyph>"
-// prompt appears only while the car is inside the pad's activation radius.
-// Entirely additive: this module creates its own Group per checkpoint and
-// does not touch vehicle/physics/camera/collision code. Positions AND sizes
-// are derived from the real exported map geometry and the car's own real
-// runtime footprint (see main.ts comments at the call site), never guessed.
+// WEB-PHASE-4 REDO (v2): "Quantum Entanglement Terminal" checkpoints. Original
+// design, not a copy of any external reference. Each terminal is a glowing
+// floor pad (location-tinted, technical quantum/holographic pattern) with a
+// cluster of counter-rotating holographic rings rising above it, a one-shot
+// floor-originating reveal the first time it comes alive, a proximity radio-
+// static cue the instant the car arrives (handled here), and a particle
+// "deconstruction" burst the caller (main.ts) triggers on actual ENTER
+// activation via triggerActivation() below -- your position/data physically
+// breaking into particles and streaming into the terminal, paired with a
+// camera shake and audio chime driven from main.ts. Entirely additive: this
+// module creates its own Group per checkpoint and never touches vehicle/
+// physics/camera/collision code. Positions AND sizes are derived from the
+// real exported map geometry and the car's own real runtime footprint (see
+// main.ts comments at the call site), never guessed.
 
 export type CheckpointId = 'port' | 'platform' | 'city'
 
@@ -43,18 +46,24 @@ export interface Checkpoint {
   active: boolean
   // Elapsed-time (seconds, same clock as updateCheckpoints' elapsedTime arg)
   // at which this pad's one-shot reveal animation began. null until the
-  // first updateCheckpoints() call sets it, so the reveal starts from
-  // whatever moment the scene actually begins animating rather than from a
-  // guessed/hardcoded time.
+  // first updateCheckpoints() call sets it.
   revealStart: number | null
+  // Internal: particle-burst state (see triggerActivation / the per-frame
+  // update in updateCheckpoints). Not meant to be read by callers.
+  _burst: BurstState
 }
 
-// id -> 0/1/2, purely a shader-branch selector (see uVariant below). Not a
-// new concept in the data model — the pad already carries its own `id`, this
-// is just how that id reaches the fragment shader as a float uniform.
-const VARIANT_INDEX: Record<CheckpointId, number> = { port: 0, platform: 1, city: 2 }
-
 const REVEAL_DURATION = 1.35 // seconds — small, quick, not a long cutscene.
+const BURST_COUNT = 220
+const BURST_DURATION = 0.85 // seconds
+
+interface BurstState {
+  points: THREE.Points
+  positions: Float32Array
+  velocities: Float32Array
+  ages: Float32Array // 0..1 fraction of BURST_DURATION elapsed; >=1 means dead
+  active: boolean
+}
 
 const VERTEX_SHADER = /* glsl */ `
   varying vec2 vUv;
@@ -64,19 +73,17 @@ const VERTEX_SHADER = /* glsl */ `
   }
 `
 
-// Restrained glass pad: soft fill, brighter rounded-rect border band, a slow
-// single scan line sweeping along the long axis, a gentle breathing opacity,
-// a location-specific procedural pattern (uVariant), and a radial "iris"
-// reveal mask (uReveal) that draws the whole pad in from its own center the
+// Quantum-terminal floor: soft fill, bright rounded-rect border band, slow
+// concentric "data rings" expanding from center, a thin rotating radial
+// spoke pattern, a slow scan sweep, a gentle breathing opacity, and a radial
+// "iris" reveal mask that draws the whole pad in from its own center the
 // first time it comes alive — all driven by uTime/uReveal. uActive blends
-// the whole thing up when the car is inside the pad (handled in update()),
-// so idle pads stay quiet.
+// the whole thing up when the car is inside the pad.
 const FRAGMENT_SHADER = /* glsl */ `
   varying vec2 vUv;
   uniform float uTime;
   uniform float uActive;
   uniform float uReveal;
-  uniform float uVariant;
   uniform vec3 uColor;
 
   float edgeBand(vec2 uv, float inset, float feather) {
@@ -85,72 +92,48 @@ const FRAGMENT_SHADER = /* glsl */ `
     return 1.0 - smoothstep(inset, inset + feather, m);
   }
 
-  // Port: fine dock-grid lines -- industrial/maritime technical marking.
-  float dockGrid(vec2 uv) {
-    vec2 g = abs(fract(uv * vec2(7.0, 4.0)) - 0.5);
-    float lx = smoothstep(0.045, 0.0, g.x);
-    float ly = smoothstep(0.045, 0.0, g.y);
-    return max(lx, ly);
-  }
-
-  // Platform: soft horizontal architectural light-plane bands, drifting very
-  // slowly -- canopy/glass/concrete reflection language, not a hard grid.
-  float architecturalBands(vec2 uv, float t) {
-    float wave = sin((uv.y * 8.0) - t * 0.18);
-    return smoothstep(0.65, 1.0, wave);
-  }
-
-  // City: a single longitudinal "lane" centerline with moving dashes plus
-  // perpendicular wayfinding ticks near the long edges -- urban road language.
-  float laneMarkings(vec2 uv, float t) {
-    float center = smoothstep(0.035, 0.0, abs(uv.x - 0.5));
-    float dash = step(0.5, fract(uv.y * 9.0 - t * 0.3));
-    float nearEdge = smoothstep(0.38, 0.5, abs(uv.x - 0.5));
-    float tick = smoothstep(0.08, 0.0, abs(fract(uv.y * 5.0) - 0.5)) * nearEdge;
-    return max(center * dash, tick * 0.6);
-  }
-
   void main() {
     vec2 uv = vUv;
+    vec2 c = uv - 0.5;
+    float dist = length(c) * 1.42; // ~0 center .. ~1 corner
+    float ang = atan(c.y, c.x);
 
     // Radial iris reveal: the pad draws itself in from its own center
     // outward, i.e. "originates from the floor" rather than popping in.
-    float radius = length(uv - 0.5) * 1.42;
-    float revealMask = 1.0 - smoothstep(uReveal - 0.10, uReveal, radius);
+    float revealMask = 1.0 - smoothstep(uReveal - 0.10, uReveal, dist);
 
     float fill = 0.05 + 0.02 * sin(uTime * 0.6);
     float border = edgeBand(uv, 0.015, 0.02);
 
+    // Concentric data rings expanding outward from the terminal's own
+    // center, looping -- the "entanglement" pulse.
+    float ringPhase = fract(dist * 5.0 - uTime * 0.35);
+    float rings = smoothstep(0.08, 0.0, abs(ringPhase - 0.5)) * smoothstep(1.0, 0.15, dist);
+
+    // Thin rotating radial spokes -- technical terminal markings.
+    float spokeCount = 16.0;
+    float spoke = smoothstep(0.06, 0.0, abs(fract((ang + uTime * 0.12) / (2.0 * 3.14159265) * spokeCount) - 0.5));
+    spoke *= smoothstep(0.08, 0.22, dist) * smoothstep(1.0, 0.55, dist);
+
     float scan = smoothstep(0.0, 0.05, 0.5 - abs(fract(uTime * 0.09) - uv.x));
-    scan *= 0.35;
+    scan *= 0.3;
 
     float breathe = 0.65 + 0.35 * sin(uTime * 0.8);
 
-    float variantPattern;
-    if (uVariant < 0.5) {
-      variantPattern = dockGrid(uv) * 0.26;
-    } else if (uVariant < 1.5) {
-      variantPattern = architecturalBands(uv, uTime) * 0.16;
-    } else {
-      variantPattern = laneMarkings(uv, uTime) * 0.4;
-    }
-
-    float alpha = fill + border * (0.55 + 0.45 * breathe) + scan * 0.4 + variantPattern;
+    float alpha = fill + border * (0.55 + 0.45 * breathe) + scan * 0.35 + rings * 0.3 + spoke * 0.22;
     alpha *= mix(0.55, 1.0, uActive);
     alpha *= revealMask;
-    alpha = clamp(alpha, 0.0, 0.85);
+    alpha = clamp(alpha, 0.0, 0.88);
 
-    vec3 col = uColor * mix(0.7, 1.3, border) + scan * uColor * 0.6 + uColor * variantPattern * 0.9;
-    col *= mix(0.8, 1.35, uActive);
+    vec3 col = uColor * mix(0.7, 1.35, border) + (rings + spoke + scan) * uColor * 0.7;
+    col *= mix(0.8, 1.4, uActive);
 
     gl_FragColor = vec4(col, alpha);
   }
 `
 
 // Thin expanding ring that rides the same reveal progress as the pad's own
-// iris mask -- the "thin illuminated floor perimeter" / "expanding
-// translucent ring" reveal language, as a single cheap extra quad (no
-// particles, no extra draw-call-heavy system).
+// iris mask -- the "thin illuminated floor perimeter" reveal language.
 const RING_FRAGMENT_SHADER = /* glsl */ `
   varying vec2 vUv;
   uniform float uReveal;
@@ -196,17 +179,73 @@ function remapShapeGeometryUv(geo: THREE.ShapeGeometry): void {
   geo.setAttribute('uv', new THREE.BufferAttribute(uvArr, 2))
 }
 
+function buildHoloRings(def: CheckpointDef): THREE.Group {
+  // Diegetic "terminal" structure: 3 counter-rotating holographic rings
+  // rising above the pad, radii scaled to the pad's own size so they grow
+  // with it automatically. Simple additive-blended torus geometry, no extra
+  // shader needed -- cheap (3 meshes, a few hundred tris each).
+  const group = new THREE.Group()
+  const minSide = Math.min(def.width, def.depth)
+  // WEB-PHASE-4 REDO Phase 6: heightFactor (fraction of minSide), not a fixed
+  // absolute height -- Phase 6 grew the pads substantially (see main.ts), and
+  // a fixed height would have left the now-much-wider rings sitting flat and
+  // squashed-looking; this keeps the same stacked-ring proportions at any
+  // pad size, derived from the original fixed heights (1.4/2.6/4.0) against
+  // the original ~18-unit minSide.
+  const ringSpecs = [
+    { radiusFactor: 0.2, heightFactor: 0.08, tube: 0.07, speed: 0.5, tilt: 0.08 },
+    { radiusFactor: 0.27, heightFactor: 0.14, tube: 0.055, speed: -0.35, tilt: -0.12 },
+    { radiusFactor: 0.33, heightFactor: 0.22, tube: 0.04, speed: 0.22, tilt: 0.16 }
+  ]
+  for (const spec of ringSpecs) {
+    const radius = minSide * spec.radiusFactor
+    const geo = new THREE.TorusGeometry(radius, spec.tube * minSide * 0.35, 8, 48)
+    const mat = new THREE.MeshBasicMaterial({
+      color: def.color,
+      transparent: true,
+      opacity: 0.55,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    })
+    const ring = new THREE.Mesh(geo, mat)
+    ring.rotation.x = Math.PI / 2 + spec.tilt
+    ring.position.y = minSide * spec.heightFactor
+    ring.userData.spinSpeed = spec.speed
+    ring.name = `Checkpoint_${def.id}_HoloRing`
+    group.add(ring)
+  }
+  return group
+}
+
+function buildBurst(def: CheckpointDef): BurstState {
+  const positions = new Float32Array(BURST_COUNT * 3)
+  const velocities = new Float32Array(BURST_COUNT * 3)
+  const ages = new Float32Array(BURST_COUNT).fill(1) // start fully "dead"
+
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+  const mat = new THREE.PointsMaterial({
+    color: def.color,
+    size: 1.1,
+    sizeAttenuation: true,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  })
+  const points = new THREE.Points(geo, mat)
+  points.name = `Checkpoint_${def.id}_Burst`
+  points.frustumCulled = false
+  return { points, positions, velocities, ages, active: false }
+}
+
 function buildPadGroup(def: CheckpointDef): THREE.Group {
   const group = new THREE.Group()
   group.position.copy(def.position)
   group.rotation.y = def.yaw
 
-  const shape = roundedRectShape(def.width, def.depth, Math.min(def.width, def.depth) * 0.12)
-  const geo = new THREE.ShapeGeometry(shape, 24)
-  // ShapeGeometry is built in the XY plane with its own UVs already in
-  // [0,1]-ish local shape space; lay it flat on the ground (rotate into XZ)
-  // and lift it a hair above the floor to avoid z-fighting with the road/pad
-  // mesh it sits on.
+  const shape = roundedRectShape(def.width, def.depth, Math.min(def.width, def.depth) * 0.1)
+  const geo = new THREE.ShapeGeometry(shape, 32)
   geo.rotateX(-Math.PI / 2)
   remapShapeGeometryUv(geo)
 
@@ -221,7 +260,6 @@ function buildPadGroup(def: CheckpointDef): THREE.Group {
       uTime: { value: 0 },
       uActive: { value: 0 },
       uReveal: { value: 0 },
-      uVariant: { value: VARIANT_INDEX[def.id] },
       uColor: { value: def.color.clone() }
     }
   })
@@ -232,10 +270,6 @@ function buildPadGroup(def: CheckpointDef): THREE.Group {
   pad.name = `Checkpoint_${def.id}_Pad`
   group.add(pad)
 
-  // Reveal ring: a flat circle circumscribing the pad, same floor-level
-  // treatment, purely additive glow -- fades itself out once the reveal
-  // completes (see RING_FRAGMENT_SHADER), so it costs nothing visually (and
-  // negligibly on the GPU) once the one-shot animation is done.
   const ringRadius = Math.max(def.width, def.depth) * 0.62
   const ringGeo = new THREE.CircleGeometry(ringRadius, 48)
   const ringMat = new THREE.ShaderMaterial({
@@ -245,10 +279,7 @@ function buildPadGroup(def: CheckpointDef): THREE.Group {
     depthWrite: false,
     side: THREE.DoubleSide,
     blending: THREE.AdditiveBlending,
-    uniforms: {
-      uReveal: { value: 0 },
-      uColor: { value: def.color.clone() }
-    }
+    uniforms: { uReveal: { value: 0 }, uColor: { value: def.color.clone() } }
   })
   ringGeo.rotateX(-Math.PI / 2)
   const ring = new THREE.Mesh(ringGeo, ringMat)
@@ -256,6 +287,8 @@ function buildPadGroup(def: CheckpointDef): THREE.Group {
   ring.renderOrder = 4
   ring.name = `Checkpoint_${def.id}_Ring`
   group.add(ring)
+
+  group.add(buildHoloRings(def))
 
   return group
 }
@@ -281,24 +314,79 @@ export function createCheckpoints(scene: THREE.Scene, defs: CheckpointDef[]): Ch
   return defs.map((def) => {
     const group = buildPadGroup(def)
     scene.add(group)
+    const burst = buildBurst(def)
+    group.add(burst.points) // local to the group, same convenience as the pad/rings
     const promptEl = buildPromptEl(def.label)
-    return { def, group, promptEl, active: false, revealStart: null }
+    return { def, group, promptEl, active: false, revealStart: null, _burst: burst }
   })
+}
+
+// Called by main.ts the instant ENTER actually activates a checkpoint (i.e.
+// right as its overlay is about to open) -- spawns the "atomic data"
+// particle burst streaming from the car's current position into the
+// terminal. Caller is responsible for the matching camera shake + audio
+// chime (see main.ts), kept out of this module since neither touches the
+// world/scene graph.
+export function triggerActivation(cp: Checkpoint, carPosition: THREE.Vector3): void {
+  const b = cp._burst
+  const center = cp.def.position
+  for (let i = 0; i < BURST_COUNT; i++) {
+    const i3 = i * 3
+    // Spawn scattered around the car (a small cloud, not a single point).
+    const spread = 1.6
+    b.positions[i3] = carPosition.x + (Math.random() - 0.5) * spread
+    b.positions[i3 + 1] = carPosition.y + 0.6 + Math.random() * 1.6
+    b.positions[i3 + 2] = carPosition.z + (Math.random() - 0.5) * spread
+    // Velocity: toward the terminal center plus upward drift plus jitter --
+    // "your data physically deconstructing and streaming into the terminal".
+    const toCenter = new THREE.Vector3(center.x, carPosition.y + 2.5, center.z).sub(carPosition).normalize()
+    const jitter = new THREE.Vector3((Math.random() - 0.5) * 0.6, Math.random() * 0.5, (Math.random() - 0.5) * 0.6)
+    const speed = 4.5 + Math.random() * 5
+    const vel = toCenter.add(jitter).normalize().multiplyScalar(speed)
+    b.velocities[i3] = vel.x
+    b.velocities[i3 + 1] = vel.y
+    b.velocities[i3 + 2] = vel.z
+    b.ages[i] = 0
+  }
+  b.active = true
+  b.points.geometry.attributes.position.needsUpdate = true
+  ;(b.points.material as THREE.PointsMaterial).opacity = 1
 }
 
 const _carXZ = new THREE.Vector2()
 const _padXZ = new THREE.Vector2()
 const _projected = new THREE.Vector3()
 
-// Updates each pad's shader time/active/reveal uniforms, decides which (if
-// any) checkpoint the car currently sits inside, and projects+positions that
-// checkpoint's DOM prompt on screen. Returns the currently-active checkpoint
-// (or null), for the caller to drive ENTER-key activation against.
+function updateBurst(b: BurstState, dt: number): void {
+  if (!b.active) return
+  let anyAlive = false
+  for (let i = 0; i < BURST_COUNT; i++) {
+    if (b.ages[i] >= 1) continue
+    anyAlive = true
+    b.ages[i] += dt / BURST_DURATION
+    const i3 = i * 3
+    b.positions[i3] += b.velocities[i3] * dt
+    b.positions[i3 + 1] += b.velocities[i3 + 1] * dt
+    b.positions[i3 + 2] += b.velocities[i3 + 2] * dt
+  }
+  b.points.geometry.attributes.position.needsUpdate = true
+  const mat = b.points.material as THREE.PointsMaterial
+  mat.opacity = anyAlive ? 0.9 : 0
+  if (!anyAlive) b.active = false
+}
+
+// Updates each pad's shader time/active/reveal uniforms, the holo-rings'
+// rotation, any in-flight particle burst, decides which (if any) checkpoint
+// the car currently sits inside (firing a quiet proximity radio-static cue
+// right as it becomes active), and projects+positions that checkpoint's DOM
+// prompt on screen. Returns the currently-active checkpoint (or null), for
+// the caller to drive ENTER-key activation against.
 export function updateCheckpoints(
   checkpoints: Checkpoint[],
   vehicle: Vehicle,
   camera: THREE.PerspectiveCamera,
-  elapsedTime: number
+  elapsedTime: number,
+  dt: number
 ): Checkpoint | null {
   _carXZ.set(vehicle.position.x, vehicle.position.z)
   let current: Checkpoint | null = null
@@ -310,17 +398,23 @@ export function updateCheckpoints(
 
     const pad = cp.group.children[0] as THREE.Mesh
     const ring = cp.group.children[1] as THREE.Mesh | undefined
+    const holoRings = cp.group.children[2] as THREE.Group | undefined
     const mat = pad.material as THREE.ShaderMaterial
     mat.uniforms.uTime.value = elapsedTime
     mat.uniforms.uReveal.value = revealEased
-    if (ring) {
-      const ringMat = ring.material as THREE.ShaderMaterial
-      ringMat.uniforms.uReveal.value = revealEased
+    if (ring) (ring.material as THREE.ShaderMaterial).uniforms.uReveal.value = revealEased
+    if (holoRings) {
+      for (const r of holoRings.children) {
+        r.rotation.z += (r.userData.spinSpeed as number) * dt
+      }
     }
+    updateBurst(cp._burst, dt)
 
     _padXZ.set(cp.def.position.x, cp.def.position.z)
     const dist = _carXZ.distanceTo(_padXZ)
+    const wasActive = cp.active
     cp.active = dist <= cp.def.activationRadius
+    if (cp.active && !wasActive) playRadioStatic() // "right before a checkpoint is opening"
     if (cp.active) current = cp
 
     mat.uniforms.uActive.value = THREE.MathUtils.damp(mat.uniforms.uActive.value, cp.active ? 1 : 0, 6, 1 / 60)

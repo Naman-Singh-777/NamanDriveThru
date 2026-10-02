@@ -14,7 +14,9 @@ import { DiagnosticCamera } from './vehicle/diagnosticCamera'
 import { SideDiagnosticCamera } from './vehicle/sideDiagnosticCamera'
 import { HeroCamera } from './vehicle/heroCamera'
 import { OverviewCamera } from './vehicle/overviewCamera'
-import { createCheckpoints, updateCheckpoints, type Checkpoint, type CheckpointDef } from './vehicle/checkpoint'
+import { createCheckpoints, updateCheckpoints, triggerActivation, type Checkpoint, type CheckpointDef } from './vehicle/checkpoint'
+import { playActivationChime } from './vehicle/checkpointAudio'
+import { addRoadEndCaps, type RoadEndCapDef } from './scene/roadEndCaps'
 import { initOverlay, openOverlay, isOverlayOpen } from './overlay'
 
 const loadingEl = document.getElementById('loading')!
@@ -185,16 +187,47 @@ async function main(): Promise<void> {
   // (>19 units to spare), Platform's canopy pillars (>40 units to spare),
   // and City's own real drivable perimeter (CityRail_* union spans Z
   // -1081.9..-178.1 -- far past this checkpoint's enlarged extent).
-  const carFootprint = new THREE.Box3().expandByObject(env.vehicleBody).getSize(new THREE.Vector3())
-  const checkpointLongSide = carFootprint.z * 2
-  const checkpointShortSide = carFootprint.x * 2
+  // WEB-PHASE-4 REDO Phase 6 ("3x bigger, way cooler"): sizes below are NOT a
+  // blind 3x of the original car-derived footprint -- a real-geometry
+  // clearance probe (read-only, same real-GLTFLoader harness used throughout
+  // this project) against the actual locked map meshes found that a literal
+  // 3x clips real, locked geometry at every single location, so each pad was
+  // instead grown to the largest size that still clears its nearest real
+  // obstacle by a comfortable margin:
+  //   Port     -- width(X) clamped to 54 by Port_Crane_02 (real bbox X max
+  //               -789.25; pad edge at -777, 12.25 units clear). depth(Z)
+  //               reaches the full >2x target at 54.4 (crane Z front -86;
+  //               pad edge -67.2, 18.8 units clear).
+  //   Platform -- width(X) clamped to 56 by the Platform_Monument_
+  //               NoteSculpture (real bbox X max 717, sitting between the
+  //               pad and the canopy's west fascia; pad edge at 722, 5 units
+  //               clear) -- this is the one location where the clamp makes
+  //               the pad come out close to square rather than elongated.
+  //               depth(Z) reaches 54.4 (pillars at Z 68.75; pad edge 27.2,
+  //               41.55 units clear).
+  //   City     -- width(X) clamped to 40 to stay inside Road_North's own
+  //               real 50-unit paved width (pad edge at 20, 5 units clear of
+  //               the curb). depth(Z): the real City_Building_20 sits just
+  //               2.5 units past the original pad center (its real bbox
+  //               reaches Z -997.16, essentially right at the road's end),
+  //               so growing depth at all required nudging this pad's own
+  //               center 45 units south along the same road (Z -995 -> -950,
+  //               still "near the far end" of the 925-unit road, nothing
+  //               else moved) -- same technique the original Port placement
+  //               already used (offsetting a checkpoint's own anchor to
+  //               clear real nearby geometry). That gives depth 80 (pad edge
+  //               -990, 7.16 units clear of the building's real south face).
+  // activationRadius grown to match each pad's own larger half-extent (+ a
+  // few units of buffer) so the "OPEN <Enter>" prompt now appears as soon as
+  // the car is actually on the enlarged pad, matching the old (correct)
+  // behaviour at the old (smaller) size.
   const checkpointDefs: CheckpointDef[] = [
     {
       id: 'port',
       position: new THREE.Vector3(-750, 53.94, -40),
-      width: checkpointLongSide,
-      depth: checkpointShortSide,
-      activationRadius: 16,
+      width: 54,
+      depth: 54.4,
+      activationRadius: 30,
       yaw: 0,
       label: 'Projects',
       color: new THREE.Color(0x6fb8ff)
@@ -202,25 +235,46 @@ async function main(): Promise<void> {
     {
       id: 'platform',
       position: new THREE.Vector3(750, 53.94, 0),
-      width: checkpointLongSide,
-      depth: checkpointShortSide,
-      activationRadius: 16,
+      width: 56,
+      depth: 54.4,
+      activationRadius: 32,
       yaw: 0,
       label: 'Music',
       color: new THREE.Color(0x7fe3b4)
     },
     {
       id: 'city',
-      position: new THREE.Vector3(0, 54.12, -995),
-      width: checkpointShortSide,
-      depth: checkpointLongSide,
-      activationRadius: 16,
+      position: new THREE.Vector3(0, 54.12, -950),
+      width: 40,
+      depth: 80,
+      activationRadius: 44,
       yaw: 0,
       label: 'Connect',
       color: new THREE.Color(0xffc477)
     }
   ]
   const checkpoints = createCheckpoints(scene, checkpointDefs)
+
+  // WEB-PHASE-4 REDO Phase 6: cap each destination road's far end in a
+  // semicircle of its own real MAT_ROAD material (see roadEndCaps.ts) so the
+  // rectangle closes off into a rounded bulb instead of stopping on a flat
+  // cut edge. Centers/radii are the real measured road geometry (all three
+  // roads are a real, locked 50-unit-wide strip -- radius = half that, 25):
+  //   Road_North (X -25..25, Z -1000..-75) -> City end at Z -1000, bulges
+  //     further north (away from the road) since nothing continues past it.
+  //   Road_East (X 75..750, Z -25..25) -> Platform end at X 750, bulges
+  //     further east onto the already-paved OpenPlatform_Pad.
+  //   Road_West (X -750..-75, Z -25..25) -> Port end at X -750, bulges
+  //     further west onto the already-paved Port_Dock.
+  // Purely additive floor decals -- roadBoundaries.ts/staticColliders.ts
+  // (the real collision geometry) are never read from or touched.
+  const roadEndCapDefs: RoadEndCapDef[] = [
+    { center: new THREE.Vector3(0, 54.12, -1000), radius: 25, outward: new THREE.Vector2(0, -1) },
+    { center: new THREE.Vector3(750, 54.12, 0), radius: 25, outward: new THREE.Vector2(1, 0) },
+    { center: new THREE.Vector3(-750, 54.12, 0), radius: 25, outward: new THREE.Vector2(-1, 0) }
+  ]
+  addRoadEndCaps(scene, env.root, roadEndCapDefs)
+
   let activeCheckpoint: Checkpoint | null = null
   initOverlay(() => {
     // overlay just closed -- nothing extra needed, driving resumes next frame
@@ -235,6 +289,16 @@ async function main(): Promise<void> {
   // camera mode"). Only O reads/writes this; every other existing toggle below
   // is completely unchanged.
   let preOverviewMode: CamMode = 'normal'
+
+  // WEB-PHASE-4 REDO Phase 6: additive camera-shake state for checkpoint
+  // activation "visual juice". Applied once per frame in the render loop
+  // below, strictly after every existing camera-mode update -- it only ever
+  // nudges camera.position by a small decaying random offset for ~0.3s and
+  // never touches any camera class file.
+  let shakeTime = 0
+  const SHAKE_DURATION = 0.32
+  const SHAKE_MAGNITUDE = 0.4
+
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return
     // WEB-PHASE-4: ENTER activates whichever checkpoint the car is currently
@@ -243,7 +307,19 @@ async function main(): Promise<void> {
     // ESC/X/backdrop-click (handled inside overlay.ts) are the only way to
     // close it, matching the spec.
     if ((e.code === 'Enter' || e.code === 'NumpadEnter') && !isOverlayOpen()) {
-      if (activeCheckpoint) openOverlay(activeCheckpoint.def.id)
+      if (activeCheckpoint) {
+        // "Visual Juice": particle burst (checkpoint.ts), a quick audio
+        // chime, and a short additive camera shake -- all on real actual
+        // ENTER activation, right before the overlay opens. None of this
+        // touches vehicle/camera class files: the shake below is a tiny
+        // decaying jitter applied to camera.position AFTER whichever camera
+        // class already wrote it this frame (see the shakeTime block in the
+        // render loop), so it's purely additive and self-resets every frame.
+        triggerActivation(activeCheckpoint, vehicle.position)
+        playActivationChime()
+        shakeTime = SHAKE_DURATION
+        openOverlay(activeCheckpoint.def.id)
+      }
       return
     }
     let next: CamMode
@@ -345,12 +421,25 @@ async function main(): Promise<void> {
     } else {
       chaseCam.update(vehicle, cameraObstacles, frameDt)
     }
+    // WEB-PHASE-4 REDO Phase 6: additive post-camera shake -- runs after
+    // every camMode branch above has already written camera.position for
+    // this frame, so it only ever adds a small decaying jitter on top,
+    // never replaces or fights with any camera class's own logic.
+    if (shakeTime > 0) {
+      shakeTime = Math.max(0, shakeTime - frameDt)
+      const t = shakeTime / SHAKE_DURATION
+      const mag = SHAKE_MAGNITUDE * t * t
+      camera.position.x += (Math.random() - 0.5) * 2 * mag
+      camera.position.y += (Math.random() - 0.5) * 2 * mag
+      camera.position.z += (Math.random() - 0.5) * 2 * mag
+    }
+
     sky.update(clock.elapsedTime)
 
     // WEB-PHASE-4: checkpoint pads always animate/update (so their glass
     // shader keeps running even while the overlay is open), but the floating
     // "OPEN <Enter>" DOM prompt is suppressed while the overlay has focus.
-    activeCheckpoint = updateCheckpoints(checkpoints, vehicle, camera, clock.elapsedTime)
+    activeCheckpoint = updateCheckpoints(checkpoints, vehicle, camera, clock.elapsedTime, frameDt)
     if (isOverlayOpen()) {
       for (const cp of checkpoints) cp.promptEl.style.display = 'none'
     }

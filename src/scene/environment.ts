@@ -140,6 +140,22 @@ export function loadEnvironment(
         })
         for (const l of importedLights) l.parent?.remove(l)
 
+        // WEB-PHASE-4 REDO: 11 small "RoadDetail_Barrier_Road_{North,South,
+        // East,West}_N" props (thin, low, ~7.5-unit road-edge blocks) read as
+        // a stray dark bar from the driving camera and the user asked for
+        // them gone map-wide. Confirmed read-only (grep) that neither
+        // staticColliders.ts nor roadBoundaries.ts reference "Barrier" or
+        // "RoadDetail" in any collision logic -- these are purely decorative,
+        // so removing them from the render graph changes nothing about
+        // driving/collision. Same non-destructive pattern as the imported-
+        // light strip above: detached from the loaded THREE graph, the
+        // locked GLB/Blender source itself is never written to.
+        const strayBarriers: THREE.Object3D[] = []
+        root.traverse((obj) => {
+          if (/^RoadDetail_Barrier_/i.test(obj.name)) strayBarriers.push(obj)
+        })
+        for (const b of strayBarriers) b.parent?.remove(b)
+
         // MAT_WATER exported with no base color (Blender's procedural ocean shader
         // can't be baked to a single glTF value), which left it defaulting to flat
         // white. Give it the dark coastal-water look described for this scene —
