@@ -1,9 +1,11 @@
 // WEB-PHASE-4 REDO: small, self-contained Web Audio synth for the checkpoint
 // terminals' two audio cues -- no external sound files, nothing to load/host.
-// - playRadioStatic(): quick, LOW-VOLUME rhythmic synth static, meant to play
-//   just as a checkpoint's proximity activates (before the overlay opens) --
-//   "data transfer is happening" over the car radio. Explicitly kept quiet
-//   and brief per the user's own instruction (not an alarm/siren).
+// - playProximityCue(): a quiet sci-fi "sensor sweep" -- three quick ascending
+//   digital blips over a faint filtered shimmer -- meant to play just as a
+//   checkpoint's proximity activates (before the overlay opens). Replaces an
+//   earlier radio-static version per the user's own request for something
+//   more "appropriate sci-fi"; still explicitly kept quiet and brief (not an
+//   alarm/siren).
 // - playActivationChime(): a clean short ascending tone sequence on actual
 //   ENTER activation -- the "satisfying feedback" cue, paired with the
 //   particle burst and camera shake in checkpoint.ts/main.ts.
@@ -31,53 +33,55 @@ function getNoiseBuffer(c: AudioContext): AudioBuffer {
   return buf
 }
 
-// Quiet, rhythmic synth static -- a filtered noise burst pulsed by a fast
-// square-ish LFO so it reads as "data transfer", not a hiss. Peaks under 0.05
-// gain and lasts well under a second; never loops or repeats on its own.
-export function playRadioStatic(): void {
+// Quiet sci-fi "sensor sweep": three quick ascending digital blips (clean
+// square-wave, filtered) over a very faint high, sweeping shimmer of filtered
+// noise underneath for texture -- reads as a scanner/terminal detecting the
+// car, not an alarm. Peaks under 0.08 gain, done in well under a second.
+export function playProximityCue(): void {
   const c = getCtx()
   const t0 = c.currentTime
-  const duration = 0.55
+  const duration = 0.42
 
-  const src = c.createBufferSource()
-  src.buffer = getNoiseBuffer(c)
-  src.loop = true
+  // Faint shimmer bed -- filtered noise swept upward, very quiet, purely
+  // textural underneath the three blips below.
+  const shimmer = c.createBufferSource()
+  shimmer.buffer = getNoiseBuffer(c)
+  shimmer.loop = true
+  const shimmerFilter = c.createBiquadFilter()
+  shimmerFilter.type = 'bandpass'
+  shimmerFilter.frequency.setValueAtTime(3200, t0)
+  shimmerFilter.frequency.linearRampToValueAtTime(5200, t0 + duration)
+  shimmerFilter.Q.value = 1.2
+  const shimmerGain = c.createGain()
+  shimmerGain.gain.setValueAtTime(0, t0)
+  shimmerGain.gain.linearRampToValueAtTime(0.018, t0 + 0.05)
+  shimmerGain.gain.linearRampToValueAtTime(0, t0 + duration)
+  shimmer.connect(shimmerFilter)
+  shimmerFilter.connect(shimmerGain)
+  shimmerGain.connect(c.destination)
+  shimmer.start(t0)
+  shimmer.stop(t0 + duration)
 
-  const bandpass = c.createBiquadFilter()
-  bandpass.type = 'bandpass'
-  bandpass.frequency.setValueAtTime(1800, t0)
-  bandpass.frequency.linearRampToValueAtTime(2600, t0 + duration)
-  bandpass.Q.value = 0.9
-
-  // Fast pulsing amplitude (rhythmic, not constant hiss) via a second
-  // oscillator driving a gain stage, all capped at a low overall volume.
-  const pulse = c.createOscillator()
-  pulse.type = 'square'
-  pulse.frequency.value = 11 // Hz -- a quick rhythmic chatter, not a buzz
-  const pulseGain = c.createGain()
-  pulseGain.gain.value = 0.022
-  const pulseOffset = c.createConstantSource()
-  pulseOffset.offset.value = 0.022
-
-  const masterGain = c.createGain()
-  masterGain.gain.setValueAtTime(0, t0)
-  masterGain.gain.linearRampToValueAtTime(1, t0 + 0.04)
-  masterGain.gain.setValueAtTime(1, t0 + duration - 0.12)
-  masterGain.gain.linearRampToValueAtTime(0, t0 + duration)
-
-  pulse.connect(pulseGain)
-  pulseGain.connect(masterGain.gain as unknown as AudioNode)
-  pulseOffset.connect(masterGain.gain as unknown as AudioNode)
-  src.connect(bandpass)
-  bandpass.connect(masterGain)
-  masterGain.connect(c.destination)
-
-  src.start(t0)
-  pulse.start(t0)
-  pulseOffset.start(t0)
-  src.stop(t0 + duration)
-  pulse.stop(t0 + duration)
-  pulseOffset.stop(t0 + duration)
+  // Three quick ascending digital blips -- a "sensor lock" readout.
+  const blipFreqs = [1046, 1318, 1568] // a bright, clean ascending triad
+  blipFreqs.forEach((freq, i) => {
+    const start = t0 + i * 0.1
+    const osc = c.createOscillator()
+    osc.type = 'square'
+    osc.frequency.value = freq
+    const blipFilter = c.createBiquadFilter()
+    blipFilter.type = 'lowpass'
+    blipFilter.frequency.value = 2600
+    const g = c.createGain()
+    g.gain.setValueAtTime(0, start)
+    g.gain.linearRampToValueAtTime(0.06, start + 0.012)
+    g.gain.exponentialRampToValueAtTime(0.0008, start + 0.09)
+    osc.connect(blipFilter)
+    blipFilter.connect(g)
+    g.connect(c.destination)
+    osc.start(start)
+    osc.stop(start + 0.1)
+  })
 }
 
 // Clean short ascending 4-note chime -- the "data sync complete" activation

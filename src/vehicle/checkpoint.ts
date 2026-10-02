@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import type { Vehicle } from './vehicle'
-import { playRadioStatic } from './checkpointAudio'
+import { playProximityCue } from './checkpointAudio'
 
 // WEB-PHASE-4 REDO (v2): "Quantum Entanglement Terminal" checkpoints. Original
 // design, not a copy of any external reference. Each terminal is a glowing
@@ -192,10 +192,16 @@ function buildHoloRings(def: CheckpointDef): THREE.Group {
   // squashed-looking; this keeps the same stacked-ring proportions at any
   // pad size, derived from the original fixed heights (1.4/2.6/4.0) against
   // the original ~18-unit minSide.
+  // WEB-PHASE-4 REDO Phase 7: each ring now also bobs up/down on its own
+  // phase/speed (in addition to its existing independent counter-rotation),
+  // so the three rings read as separately "alive" rather than rigidly
+  // locked together. bobAmplitude is kept to 18% of each ring's own base
+  // height, so the lowest point of its bob never approaches the floor -- no
+  // ring can ever dip down through the pad/ground.
   const ringSpecs = [
-    { radiusFactor: 0.2, heightFactor: 0.08, tube: 0.07, speed: 0.5, tilt: 0.08 },
-    { radiusFactor: 0.27, heightFactor: 0.14, tube: 0.055, speed: -0.35, tilt: -0.12 },
-    { radiusFactor: 0.33, heightFactor: 0.22, tube: 0.04, speed: 0.22, tilt: 0.16 }
+    { radiusFactor: 0.2, heightFactor: 0.08, tube: 0.07, speed: 0.5, tilt: 0.08, bobSpeed: 1.1, bobPhase: 0 },
+    { radiusFactor: 0.27, heightFactor: 0.14, tube: 0.055, speed: -0.35, tilt: -0.12, bobSpeed: 0.8, bobPhase: 2.1 },
+    { radiusFactor: 0.33, heightFactor: 0.22, tube: 0.04, speed: 0.22, tilt: 0.16, bobSpeed: 1.4, bobPhase: 4.4 }
   ]
   for (const spec of ringSpecs) {
     const radius = minSide * spec.radiusFactor
@@ -209,8 +215,13 @@ function buildHoloRings(def: CheckpointDef): THREE.Group {
     })
     const ring = new THREE.Mesh(geo, mat)
     ring.rotation.x = Math.PI / 2 + spec.tilt
-    ring.position.y = minSide * spec.heightFactor
+    const baseHeight = minSide * spec.heightFactor
+    ring.position.y = baseHeight
     ring.userData.spinSpeed = spec.speed
+    ring.userData.baseHeight = baseHeight
+    ring.userData.bobAmplitude = baseHeight * 0.18
+    ring.userData.bobSpeed = spec.bobSpeed
+    ring.userData.bobPhase = spec.bobPhase
     ring.name = `Checkpoint_${def.id}_HoloRing`
     group.add(ring)
   }
@@ -406,6 +417,11 @@ export function updateCheckpoints(
     if (holoRings) {
       for (const r of holoRings.children) {
         r.rotation.z += (r.userData.spinSpeed as number) * dt
+        const baseHeight = r.userData.baseHeight as number
+        const bobAmplitude = r.userData.bobAmplitude as number
+        const bobSpeed = r.userData.bobSpeed as number
+        const bobPhase = r.userData.bobPhase as number
+        r.position.y = baseHeight + Math.sin(elapsedTime * bobSpeed + bobPhase) * bobAmplitude
       }
     }
     updateBurst(cp._burst, dt)
@@ -414,7 +430,7 @@ export function updateCheckpoints(
     const dist = _carXZ.distanceTo(_padXZ)
     const wasActive = cp.active
     cp.active = dist <= cp.def.activationRadius
-    if (cp.active && !wasActive) playRadioStatic() // "right before a checkpoint is opening"
+    if (cp.active && !wasActive) playProximityCue() // "right before a checkpoint is opening"
     if (cp.active) current = cp
 
     mat.uniforms.uActive.value = THREE.MathUtils.damp(mat.uniforms.uActive.value, cp.active ? 1 : 0, 6, 1 / 60)

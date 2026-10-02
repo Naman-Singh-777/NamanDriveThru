@@ -44,7 +44,12 @@
     /* On-screen touch controls: a colourless/translucent D-pad (accelerate,
        reverse, steer) plus a separate brake button, bound in
        src/vehicle/touchControls.ts. Hidden entirely on mouse/trackpad devices
-       -- only shown for coarse (touch) pointers, i.e. phones/tablets. */
+       -- only shown for coarse (touch) pointers, i.e. phones/tablets.
+       WEB-PHASE-4 REDO Phase 7: the `html[data-input-mode]` rules below (set
+       live by touchControls.ts the instant a real touch or keyboard/mouse
+       interaction happens) override the media-query guess below them -- this
+       is what lets a convertible/2-in-1 laptop switch control schemes on its
+       own mid-session, without a reload, in either direction. */
     #touch-controls {
       position: fixed; inset: 0; z-index: 15;
       display: none; /* overridden to flex/contents under (pointer: coarse) below */
@@ -109,6 +114,11 @@
     @media (pointer: coarse) {
       #touch-controls { display: block; }
     }
+    /* Higher specificity than the plain #touch-controls rule above (and than
+       the media-query version, since specificity doesn't care which rule is
+       inside a media block) -- wins once JS has observed a real interaction. */
+    html[data-input-mode="touch"] #touch-controls { display: block; }
+    html[data-input-mode="pointer"] #touch-controls { display: none; }
 
     /* Guaranteed landscape fallback: true orientation-locking (attempted in
        touchControls.ts) only works on some Android browsers and never on iOS
@@ -187,6 +197,12 @@
       transition: transform 0.28s ease;
     }
     #checkpoint-overlay.is-open #checkpoint-overlay-panel { transform: translateY(0); }
+    /* WEB-PHASE-4 REDO Phase 7: while a checkpoint's menu is open, the panel's
+       own colors are inverted (see requestOpenOverlay/requestCloseOverlay in
+       overlay.ts) for the "entered the terminal's data-space" feel the user
+       asked for. hue-rotate(180deg) alongside invert(1) keeps it reading as a
+       coherent flipped palette rather than a harsh raw negative. */
+    #checkpoint-overlay-panel.is-inverted { filter: invert(1) hue-rotate(180deg); }
     .checkpoint-overlay__close {
       position: absolute; top: 16px; right: 16px;
       width: 32px; height: 32px; border-radius: 50%;
@@ -214,7 +230,11 @@
     .checkpoint-overlay__menu a, .checkpoint-overlay__social a {
       color: rgba(255, 255, 255, 0.95); text-decoration: none;
       font-size: 16px; font-weight: 600; letter-spacing: 0.01em;
+      display: inline-flex; align-items: center; gap: 8px;
     }
+    /* WEB-PHASE-4 REDO Phase 7: small per-app icon in front of every anchor's
+       text except Spotify's (see overlay.ts icon()). */
+    .checkpoint-overlay__icon { flex-shrink: 0; }
     .checkpoint-overlay__menu a:hover, .checkpoint-overlay__social a:hover { color: #9cc4ff; }
     .checkpoint-overlay__desc { color: rgba(255, 255, 255, 0.5); font-size: 13px; }
     .checkpoint-overlay__spotify { border-radius: 12px; margin-bottom: 14px; display: block; }
@@ -262,19 +282,51 @@
     .checkpoint-overlay__back-link:hover { color: #9cc4ff; }
     .checkpoint-overlay__spotify-player .checkpoint-overlay__spotify { margin-bottom: 0; }
 
-    /* WEB-PHASE-4 REDO: off-screen (never display:none, so playback is never
-       suspended) home for the Platform checkpoint's Spotify embed iframe(s)
-       while the overlay is closed -- see overlay.ts. Reparenting an iframe
-       between DOM locations does not reload it in any evergreen browser, so
-       this is what lets a selected track/album keep playing in the
-       background while driving, same as leaving a Spotify tab open. */
+    /* WEB-PHASE-4 REDO: home for the Platform checkpoint's Spotify embed
+       iframe(s) while the overlay is closed -- see overlay.ts. Reparenting an
+       iframe between DOM locations does not reload it in any evergreen
+       browser, so this is what lets a selected track/album keep playing in
+       the background while driving, same as leaving a Spotify tab open.
+       WEB-PHASE-4 REDO Phase 7: kept INSIDE real viewport bounds (bottom-right
+       corner, 1x1px, invisible) rather than at -99999px -- parking it that far
+       outside the viewport was what let the browser's intersection-based
+       lazy-loading (see el.loading in overlay.ts) treat it as "not visible,
+       not worth keeping active" and silently pause playback. A 1x1px corner
+       pixel still counts as on-screen, so the embed is never throttled. */
     .checkpoint-platform-holder {
-      position: fixed; left: -99999px; top: -99999px;
-      width: 1px; height: 1px; overflow: hidden; pointer-events: none;
+      position: fixed; right: 0; bottom: 0;
+      width: 1px; height: 1px; overflow: hidden; pointer-events: none; opacity: 0;
     }
 
     @media (max-width: 560px) {
       #checkpoint-overlay-panel { padding: 24px 20px 20px; border-radius: 16px; }
+    }
+
+    /* WEB-PHASE-4 REDO Phase 7: full-screen "light speed" transition flash,
+       played by src/vehicle/lightspeed.ts right before a checkpoint overlay
+       actually opens and again right before it actually closes. A first-pass
+       radiating-streaks + white-flash look (no visual reference yet) -- see
+       lightspeed.ts for the plan to refine this once the user's own
+       reference is shared. z-index sits above the checkpoint overlay (30) so
+       it fully covers the transition in both directions. */
+    #lightspeed-overlay {
+      position: fixed; inset: 0; z-index: 50;
+      pointer-events: none;
+      opacity: 0;
+      background:
+        radial-gradient(circle at 50% 50%, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.4) 16%, rgba(150,205,255,0.18) 34%, transparent 58%),
+        repeating-conic-gradient(from 0deg, rgba(255,255,255,0.92) 0deg 1.1deg, transparent 1.1deg 6deg);
+      mix-blend-mode: screen;
+      transform: scale(0.15) rotate(0deg);
+      will-change: transform, opacity;
+    }
+    #lightspeed-overlay.is-active { animation: lightspeed-flash 1s ease-in forwards; }
+    @keyframes lightspeed-flash {
+      0%   { opacity: 0;    transform: scale(0.15) rotate(0deg); }
+      12%  { opacity: 1;    transform: scale(0.6)  rotate(6deg); }
+      45%  { opacity: 1;    transform: scale(2.2)  rotate(18deg); }
+      75%  { opacity: 0.85; transform: scale(3.6)  rotate(26deg); }
+      100% { opacity: 0;    transform: scale(4.6)  rotate(32deg); }
     }
   </style>
 </head>
@@ -319,6 +371,7 @@
        checkpoint's Spotify iframe(s) so music keeps playing in the
        background across overlay close/reopen -- see overlay.ts. -->
   <div id="checkpoint-platform-holder" class="checkpoint-platform-holder" aria-hidden="true"></div>
+  <div id="lightspeed-overlay" aria-hidden="true"></div>
 
   <script type="module" src="/src/main.ts"></script>
 </body>

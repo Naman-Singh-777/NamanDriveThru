@@ -63,8 +63,26 @@ function buildCapShape(radius: number): THREE.Shape {
   return s
 }
 
+// WEB-PHASE-4 REDO Phase 7: a thin painted-line arc tracing just inside the
+// cap's own curve, so the road's lane marking reads as "completing" into the
+// semicircle too, not just the pavement underneath it. Built with the exact
+// same half-disc convention as buildCapShape (RingGeometry's thetaStart=PI,
+// thetaLength=PI sweeps its local -Y half, which is the same half
+// buildCapShape's Shape traces) so the same rotation.y formula below orients
+// both pieces identically -- no separate derivation needed.
+function buildCapLineGeometry(radius: number, lineWidth: number): THREE.RingGeometry {
+  const inner = Math.max(radius - lineWidth, 0.01)
+  const geo = new THREE.RingGeometry(inner, radius, 48, 1, Math.PI, Math.PI)
+  geo.rotateX(-Math.PI / 2)
+  return geo
+}
+
 export function addRoadEndCaps(scene: THREE.Scene, root: THREE.Object3D, defs: RoadEndCapDef[]): void {
   const mat = roadMatchingMaterial(root)
+  // Plain bright off-white, matching the look of this project's existing
+  // RoadDetail_Edge_*/Center_* lane-marking meshes -- not tied to any locked
+  // material, since this is new, additive content.
+  const lineMat = new THREE.MeshBasicMaterial({ color: 0xf0f0f0 })
   for (const def of defs) {
     const geo = new THREE.ShapeGeometry(buildCapShape(def.radius), 32)
     geo.rotateX(-Math.PI / 2)
@@ -78,5 +96,14 @@ export function addRoadEndCaps(scene: THREE.Scene, root: THREE.Object3D, defs: R
     mesh.rotation.y = Math.atan2(dir.x, dir.y)
     mesh.name = 'RoadEndCap'
     scene.add(mesh)
+
+    const lineWidth = Math.max(def.radius * 0.035, 0.4)
+    const lineGeo = buildCapLineGeometry(def.radius * 0.92, lineWidth)
+    const lineMesh = new THREE.Mesh(lineGeo, lineMat)
+    lineMesh.position.copy(def.center)
+    lineMesh.position.y += 0.03 // sit just above the cap -- avoids z-fighting
+    lineMesh.rotation.y = mesh.rotation.y
+    lineMesh.name = 'RoadEndCapLine'
+    scene.add(lineMesh)
   }
 }

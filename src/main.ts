@@ -17,7 +17,7 @@ import { OverviewCamera } from './vehicle/overviewCamera'
 import { createCheckpoints, updateCheckpoints, triggerActivation, type Checkpoint, type CheckpointDef } from './vehicle/checkpoint'
 import { playActivationChime } from './vehicle/checkpointAudio'
 import { addRoadEndCaps, type RoadEndCapDef } from './scene/roadEndCaps'
-import { initOverlay, openOverlay, isOverlayOpen } from './overlay'
+import { initOverlay, requestOpenOverlay, isOverlayOpen } from './overlay'
 
 const loadingEl = document.getElementById('loading')!
 const loadingFill = document.getElementById('loading-fill')!
@@ -205,6 +205,17 @@ async function main(): Promise<void> {
   //               the pad come out close to square rather than elongated.
   //               depth(Z) reaches 54.4 (pillars at Z 68.75; pad edge 27.2,
   //               41.55 units clear).
+  // WEB-PHASE-4 REDO Phase 7: Port/Platform's own Y was 53.94 (the dock/
+  // platform floor), but each pad's footprint straddles the exact seam with
+  // its approach road, whose real surface sits 0.1875 units HIGHER (54.125)
+  // -- the part of the pad over the road was rendering UNDER the road
+  // surface ("like a carpet", per the screenshot). Both now use 54.125 (the
+  // real road surface height, the higher of the two), so the pad's own 0.08
+  // local offset clears BOTH real surfaces; the small sliver over the dock/
+  // platform floor now floats ~0.19 units above it instead, imperceptible at
+  // driving distance and in keeping with a "holographic terminal" look.
+  // City's whole footprint already sits entirely on one surface (the road),
+  // so it needed no change.
   //   City     -- width(X) clamped to 40 to stay inside Road_North's own
   //               real 50-unit paved width (pad edge at 20, 5 units clear of
   //               the curb). depth(Z): the real City_Building_20 sits just
@@ -224,7 +235,7 @@ async function main(): Promise<void> {
   const checkpointDefs: CheckpointDef[] = [
     {
       id: 'port',
-      position: new THREE.Vector3(-750, 53.94, -40),
+      position: new THREE.Vector3(-750, 54.125, -40),
       width: 54,
       depth: 54.4,
       activationRadius: 30,
@@ -234,7 +245,7 @@ async function main(): Promise<void> {
     },
     {
       id: 'platform',
-      position: new THREE.Vector3(750, 53.94, 0),
+      position: new THREE.Vector3(750, 54.125, 0),
       width: 56,
       depth: 54.4,
       activationRadius: 32,
@@ -318,7 +329,7 @@ async function main(): Promise<void> {
         triggerActivation(activeCheckpoint, vehicle.position)
         playActivationChime()
         shakeTime = SHAKE_DURATION
-        openOverlay(activeCheckpoint.def.id)
+        requestOpenOverlay(activeCheckpoint.def.id) // plays the light-speed flash, then actually opens
       }
       return
     }

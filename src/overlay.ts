@@ -1,5 +1,6 @@
 import { externalLinks } from './config/externalLinks'
 import type { CheckpointId } from './vehicle/checkpoint'
+import { playLightspeed } from './vehicle/lightspeed'
 
 // WEB-PHASE-4: the shared full-screen "glass" overlay all three checkpoints
 // open into. DOM/CSS skeleton lives in index.html (same convention as
@@ -42,7 +43,14 @@ function getOrCreatePlatformIframe(type: string, id: string): HTMLIFrameElement 
     el.width = '100%'
     el.height = '352'
     el.style.border = '0'
-    el.loading = 'lazy'
+    // WEB-PHASE-4 REDO Phase 7: NOT 'lazy' -- the browser's native iframe
+    // lazy-loading treats an element parked far outside the viewport (the
+    // off-screen holder below) as "not worth loading/keeping active", which
+    // is exactly what was silently pausing playback while driving with the
+    // overlay closed. 'eager' plus keeping the holder inside real viewport
+    // bounds (see .checkpoint-platform-holder in index.html) is what
+    // actually keeps this iframe alive in the background.
+    el.loading = 'eager'
     el.allow = 'autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture'
     platformIframes.set(id, el)
   }
@@ -69,6 +77,29 @@ export function closeOverlay(): void {
   onCloseCb?.()
 }
 
+// WEB-PHASE-4 REDO Phase 7: a small inline icon in front of every anchor's
+// text except the Spotify embeds (per explicit request) -- plain inline SVG,
+// no external icon font/image requests, each sized/colored to sit cleanly in
+// front of the existing link text. "Icon" strings are simplified brand
+// glyphs (GitHub is used for every project link too, since every Port entry
+// is a GitHub repo), not pixel-exact logo artwork.
+type IconKey = 'github' | 'linkedin' | 'instagram' | 'email' | 'drive'
+const ICON_PATHS: Record<IconKey, string> = {
+  github:
+    '<path fill="currentColor" d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-1.04-.01-1.89-2.78.62-3.37-1.19-3.37-1.19-.45-1.17-1.11-1.48-1.11-1.48-.91-.64.07-.63.07-.63 1 .07 1.53 1.05 1.53 1.05.89 1.57 2.34 1.12 2.91.86.09-.66.35-1.12.63-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05a9.3 9.3 0 0 1 5 0c1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.8-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .27.18.6.69.49A10.26 10.26 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z"/>',
+  linkedin:
+    '<path fill="currentColor" d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.86 0-2.14 1.45-2.14 2.94v5.67H9.34V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.45v6.29ZM5.34 7.43a2.07 2.07 0 1 1 0-4.13 2.07 2.07 0 0 1 0 4.13ZM7.12 20.45H3.56V9h3.56v11.45Z"/>',
+  instagram:
+    '<rect x="3" y="3" width="18" height="18" rx="5" ry="5" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="4.1" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="17.4" cy="6.6" r="1.1" fill="currentColor"/>',
+  email:
+    '<path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M3.5 5.5h17a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1h-17a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1Z"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 6.5l9 6.5 9-6.5"/>',
+  drive:
+    '<path fill="#FFC107" d="M7.7 3h8.6l4.3 7.4h-8.6z"/><path fill="#4285F4" d="M12.9 10.4h7.7l-4.3 7.6h-7.7z"/><path fill="#34A853" d="M3 10.4h7.7l-4 7.6H7z"/>'
+}
+function icon(key: IconKey): string {
+  return `<svg class="checkpoint-overlay__icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">${ICON_PATHS[key]}</svg>`
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
 }
@@ -81,47 +112,37 @@ function renderMessage(msg: string): string {
 // pinned items are GraphQL-only, and GraphQL requires a token this static
 // client-side site must never embed (see externalLinks.ts). We use the
 // no-auth, read-only community endpoint below (the same approach most
-// "GitHub pinned repos" profile widgets use); if it's unreachable we fall
-// back to the account's most-recently-pushed public repos via the official
-// REST API, clearly labelled as such rather than mislabeled as "pinned".
+// "GitHub pinned repos" profile widgets use). WEB-PHASE-4 REDO Phase 7: the
+// earlier "recently pushed" fallback is REMOVED per explicit request — Port
+// must only ever show repos actually pinned on the GitHub profile, never a
+// substitute list; if the pinned endpoint is unreachable or empty this now
+// surfaces an honest "couldn't load" message instead (see renderPort below),
+// rather than silently showing non-pinned repos.
 async function fetchPortProjects(username: string): Promise<{ name: string; description: string; href: string }[]> {
-  try {
-    const res = await fetch(`https://gh-pinned-repos.egoist.dev/?username=${encodeURIComponent(username)}`)
-    if (!res.ok) throw new Error(`pinned endpoint ${res.status}`)
-    const pinned = (await res.json()) as { repo: string; owner: string; description: string | null }[]
-    if (!Array.isArray(pinned) || pinned.length === 0) throw new Error('empty pinned list')
+  const res = await fetch(`https://gh-pinned-repos.egoist.dev/?username=${encodeURIComponent(username)}`)
+  if (!res.ok) throw new Error(`pinned endpoint ${res.status}`)
+  const pinned = (await res.json()) as { repo: string; owner: string; description: string | null }[]
+  if (!Array.isArray(pinned)) throw new Error('malformed pinned list')
 
-    const withLiveUrls = await Promise.all(
-      pinned.map(async (p) => {
-        const owner = p.owner || username
-        let href = `https://github.com/${owner}/${p.repo}`
-        let description = p.description || ''
-        try {
-          const detail = await fetch(`https://api.github.com/repos/${owner}/${p.repo}`)
-          if (detail.ok) {
-            const d = (await detail.json()) as { homepage?: string | null; html_url: string; description?: string | null }
-            if (d.homepage && d.homepage.trim()) href = d.homepage.trim()
-            else href = d.html_url
-            description = description || d.description || ''
-          }
-        } catch {
-          // homepage lookup failed — keep the plain repo link already set above
+  return Promise.all(
+    pinned.map(async (p) => {
+      const owner = p.owner || username
+      let href = `https://github.com/${owner}/${p.repo}`
+      let description = p.description || ''
+      try {
+        const detail = await fetch(`https://api.github.com/repos/${owner}/${p.repo}`)
+        if (detail.ok) {
+          const d = (await detail.json()) as { homepage?: string | null; html_url: string; description?: string | null }
+          if (d.homepage && d.homepage.trim()) href = d.homepage.trim()
+          else href = d.html_url
+          description = description || d.description || ''
         }
-        return { name: p.repo, description, href }
-      })
-    )
-    return withLiveUrls
-  } catch {
-    // Fallback: most-recently-pushed public repos, official REST API, no auth.
-    const res = await fetch(`https://api.github.com/users/${encodeURIComponent(username)}/repos?sort=pushed&per_page=6`)
-    if (!res.ok) throw new Error(`repos fallback ${res.status}`)
-    const repos = (await res.json()) as { name: string; description: string | null; homepage: string | null; html_url: string }[]
-    return repos.map((r) => ({
-      name: r.name,
-      description: r.description || '',
-      href: r.homepage && r.homepage.trim() ? r.homepage.trim() : r.html_url
-    }))
-  }
+      } catch {
+        // homepage lookup failed — keep the plain repo link already set above
+      }
+      return { name: p.repo, description, href }
+    })
+  )
 }
 
 function driveSectionHtml(): string {
@@ -132,7 +153,7 @@ function driveSectionHtml(): string {
     <h3 class="checkpoint-overlay__section-heading">${escapeHtml(label)}</h3>
     <ul class="checkpoint-overlay__menu">
       <li>
-        <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>
+        <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${icon('drive')}${escapeHtml(label)}</a>
         <span class="checkpoint-overlay__desc">Google Drive</span>
       </li>
     </ul>
@@ -162,7 +183,7 @@ async function renderPort(): Promise<void> {
           .map(
             (p) => `
           <li>
-            <a href="${escapeHtml(p.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(p.name)}</a>
+            <a href="${escapeHtml(p.href)}" target="_blank" rel="noopener noreferrer">${icon('github')}${escapeHtml(p.name)}</a>
             ${p.description ? `<span class="checkpoint-overlay__desc">${escapeHtml(p.description)}</span>` : ''}
           </li>`
           )
@@ -283,12 +304,12 @@ function renderPlatform(): void {
 function renderCity(): void {
   const s = externalLinks.social
   const github = s.github || (externalLinks.githubUsername ? `https://github.com/${externalLinks.githubUsername}` : '')
-  const entries: { label: string; href: string }[] = []
-  if (github) entries.push({ label: 'GitHub', href: github })
-  if (s.linkedin) entries.push({ label: 'LinkedIn', href: s.linkedin })
-  if (s.instagram) entries.push({ label: 'Instagram', href: s.instagram })
-  if (s.email) entries.push({ label: 'Email', href: `mailto:${s.email}` })
-  if (s.email2) entries.push({ label: 'Email (alt)', href: `mailto:${s.email2}` })
+  const entries: { label: string; href: string; icon: IconKey }[] = []
+  if (github) entries.push({ label: 'GitHub', href: github, icon: 'github' })
+  if (s.linkedin) entries.push({ label: 'LinkedIn', href: s.linkedin, icon: 'linkedin' })
+  if (s.instagram) entries.push({ label: 'Instagram', href: s.instagram, icon: 'instagram' })
+  if (s.email) entries.push({ label: 'Email', href: `mailto:${s.email}`, icon: 'email' })
+  if (s.email2) entries.push({ label: 'Email (alt)', href: `mailto:${s.email2}`, icon: 'email' })
 
   if (entries.length === 0) {
     bodyEl.innerHTML = renderMessage('Social links not configured yet.')
@@ -298,7 +319,7 @@ function renderCity(): void {
     <ul class="checkpoint-overlay__social">
       ${entries
         .map(
-          (e) => `<li><a href="${escapeHtml(e.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(e.label)}</a></li>`
+          (e) => `<li><a href="${escapeHtml(e.href)}" target="_blank" rel="noopener noreferrer">${icon(e.icon)}${escapeHtml(e.label)}</a></li>`
         )
         .join('')}
     </ul>
@@ -317,9 +338,43 @@ export function openOverlay(id: CheckpointId): void {
   else renderCity()
 }
 
-// onClose: called whenever the overlay closes (ESC, X, backdrop click) — the
-// caller (main.ts) uses it to know playback/driving focus has returned to
-// the 3D scene, without this module needing to know anything about checkpoints.
+// WEB-PHASE-4 REDO Phase 7: guards the one in-flight open/close transition at
+// a time -- a second ENTER/ESC/click mid-flash is simply ignored rather than
+// overlapping two 1s animations or double-firing open/close.
+let transitioning = false
+
+// The real entry point from main.ts's ENTER handler now (replacing a direct
+// openOverlay call): plays the light-speed flash first, and only once it's
+// done does the overlay actually open, with its background inverted for as
+// long as it stays open (both per explicit request).
+export function requestOpenOverlay(id: CheckpointId): void {
+  if (transitioning || openId === id) return
+  transitioning = true
+  void playLightspeed().then(() => {
+    openOverlay(id)
+    panelEl.classList.add('is-inverted')
+    transitioning = false
+  })
+}
+
+// The real entry point for every close trigger (ESC, X, backdrop) now: plays
+// the light-speed flash first (hiding the cut back to normal colors), then
+// actually closes -- driving resumes exactly when that finishes, "keep
+// moving on" right after the flash.
+function requestCloseOverlay(): void {
+  if (transitioning || openId === null) return
+  transitioning = true
+  void playLightspeed().then(() => {
+    panelEl.classList.remove('is-inverted')
+    closeOverlay()
+    transitioning = false
+  })
+}
+
+// onClose: called whenever the overlay actually closes (after the closing
+// light-speed flash finishes) — the caller (main.ts) uses it to know
+// playback/driving focus has returned to the 3D scene, without this module
+// needing to know anything about checkpoints.
 export function initOverlay(onClose: () => void): void {
   overlayEl = document.getElementById('checkpoint-overlay')!
   panelEl = document.getElementById('checkpoint-overlay-panel')!
@@ -329,12 +384,12 @@ export function initOverlay(onClose: () => void): void {
   platformHolderEl = document.getElementById('checkpoint-platform-holder')!
   onCloseCb = onClose
 
-  closeBtn.addEventListener('click', closeOverlay)
+  closeBtn.addEventListener('click', requestCloseOverlay)
   overlayEl.addEventListener('click', (e) => {
-    if (e.target === overlayEl) closeOverlay() // backdrop click, not the panel itself
+    if (e.target === overlayEl) requestCloseOverlay() // backdrop click, not the panel itself
   })
   panelEl.addEventListener('click', (e) => e.stopPropagation())
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'Escape' && isOverlayOpen()) closeOverlay()
+    if (e.code === 'Escape' && isOverlayOpen()) requestCloseOverlay()
   })
 }

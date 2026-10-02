@@ -75,6 +75,35 @@ function tryLockLandscapeOnce(): void {
   window.addEventListener('pointerdown', attempt, { once: true, passive: true })
 }
 
+// WEB-PHASE-4 REDO Phase 7: live input-mode detection for convertible/
+//2-in-1 devices (e.g. a touchscreen laptop), which the CSS
+// `@media (pointer: coarse)` alone can't reliably track -- some browsers
+// never update it when the same machine switches between keyboard+mouse and
+// tablet use. This sets a `data-input-mode` attribute on <html> the instant
+// a REAL interaction of either kind is observed, and index.html's CSS gives
+// that attribute higher specificity than the media query, so it always wins
+// once set -- the on-screen controls appear/disappear live, mid-session, with
+// no reload. Until the first real interaction, the media query's initial
+// guess still applies (so a phone with no mouse at all still shows controls
+// immediately on load).
+function initAdaptiveInputMode(): void {
+  const root = document.documentElement
+  const setMode = (mode: 'touch' | 'pointer') => {
+    if (root.getAttribute('data-input-mode') === mode) return
+    root.setAttribute('data-input-mode', mode)
+    if (mode === 'touch') tryLockLandscapeOnce() // arm it even if the session started in keyboard/mouse mode
+  }
+  window.addEventListener('touchstart', () => setMode('touch'), { passive: true })
+  window.addEventListener('keydown', () => setMode('pointer'))
+  window.addEventListener('mousedown', (e) => {
+    // A touch tap can also dispatch a synthetic mousedown afterwards on some
+    // browsers -- ignore that so a tap doesn't immediately flip the mode
+    // straight back to "pointer".
+    if ((e as MouseEvent & { pointerType?: string }).pointerType === 'touch') return
+    setMode('pointer')
+  })
+}
+
 export function bindTouchControls(state: InputState): void {
   bindHoldButton(BTN_IDS.up, (p) => { state.forward = p })
   bindHoldButton(BTN_IDS.down, (p) => { state.reverse = p })
@@ -82,6 +111,7 @@ export function bindTouchControls(state: InputState): void {
   bindHoldButton(BTN_IDS.right, (p) => { state.right = p })
   bindHoldButton(BTN_IDS.brake, (p) => { state.brake = p })
 
+  initAdaptiveInputMode()
   if (window.matchMedia('(pointer: coarse)').matches) {
     tryLockLandscapeOnce()
   }
