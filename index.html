@@ -120,6 +120,19 @@
     html[data-input-mode="touch"] #touch-controls { display: block; }
     html[data-input-mode="pointer"] #touch-controls { display: none; }
 
+    /* WEB-PHASE-4 REDO Phase 10: touch/phone devices have no Enter key, so
+       the "OPEN <Enter>" checkpoint prompt itself must be tappable there --
+       same data-input-mode pattern as #touch-controls above (coarse-pointer
+       media query for the pre-interaction guess, then the live attribute
+       once a real touch/keyboard/mouse event is observed). On keyboard+mouse
+       devices this stays pointer-events:none exactly as before, so nothing
+       about the desktop ENTER flow changes. */
+    @media (pointer: coarse) {
+      .checkpoint-prompt { pointer-events: auto; cursor: pointer; }
+    }
+    html[data-input-mode="touch"] .checkpoint-prompt { pointer-events: auto; cursor: pointer; }
+    html[data-input-mode="pointer"] .checkpoint-prompt { pointer-events: none; }
+
     /* Guaranteed landscape fallback: true orientation-locking (attempted in
        touchControls.ts) only works on some Android browsers and never on iOS
        Safari, so a touch device left in portrait gets a blocking prompt

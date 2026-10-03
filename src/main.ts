@@ -310,6 +310,24 @@ async function main(): Promise<void> {
   const SHAKE_DURATION = 0.32
   const SHAKE_MAGNITUDE = 0.4
 
+  // WEB-PHASE-4 REDO Phase 10: the shared activation sequence -- originally
+  // only the ENTER-key branch below, now also called from each checkpoint's
+  // own on-screen prompt tap (see the pointerup wiring after this listener),
+  // since phones/tablets have no Enter key at all. Exactly the same effects
+  // either way: particle burst + audio chime + camera shake, then the
+  // light-speed flash before the overlay actually opens. None of this
+  // touches vehicle/camera class files -- the shake is a tiny decaying
+  // jitter applied to camera.position AFTER whichever camera class already
+  // wrote it this frame (see the shakeTime block in the render loop), so
+  // it's purely additive and self-resets every frame.
+  function activateCheckpoint(cp: Checkpoint): void {
+    if (isOverlayOpen()) return
+    triggerActivation(cp, vehicle.position)
+    playActivationChime()
+    shakeTime = SHAKE_DURATION
+    requestOpenOverlay(cp.def.id) // plays the light-speed flash, then actually opens
+  }
+
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return
     // WEB-PHASE-4: ENTER activates whichever checkpoint the car is currently
@@ -318,19 +336,7 @@ async function main(): Promise<void> {
     // ESC/X/backdrop-click (handled inside overlay.ts) are the only way to
     // close it, matching the spec.
     if ((e.code === 'Enter' || e.code === 'NumpadEnter') && !isOverlayOpen()) {
-      if (activeCheckpoint) {
-        // "Visual Juice": particle burst (checkpoint.ts), a quick audio
-        // chime, and a short additive camera shake -- all on real actual
-        // ENTER activation, right before the overlay opens. None of this
-        // touches vehicle/camera class files: the shake below is a tiny
-        // decaying jitter applied to camera.position AFTER whichever camera
-        // class already wrote it this frame (see the shakeTime block in the
-        // render loop), so it's purely additive and self-resets every frame.
-        triggerActivation(activeCheckpoint, vehicle.position)
-        playActivationChime()
-        shakeTime = SHAKE_DURATION
-        requestOpenOverlay(activeCheckpoint.def.id) // plays the light-speed flash, then actually opens
-      }
+      if (activeCheckpoint) activateCheckpoint(activeCheckpoint)
       return
     }
     let next: CamMode
@@ -359,6 +365,20 @@ async function main(): Promise<void> {
     else if (camMode === 'overview') overviewCam.reset()
     else chaseCam.reset()
   })
+
+  // WEB-PHASE-4 REDO Phase 10: touch/phone devices have no Enter key, so the
+  // floating "OPEN" prompt above an active checkpoint is now tappable too --
+  // same activateCheckpoint() path as ENTER. CSS (index.html) only makes the
+  // prompt pointer-events:auto on touch input, so this changes nothing for
+  // keyboard+mouse visitors. cp.active already gates real-world visibility
+  // (checkpoint.ts hides the prompt via display:none otherwise), so this is
+  // just the extra activation entry point, not a new proximity check.
+  for (const cp of checkpoints) {
+    cp.promptEl.addEventListener('pointerup', (e) => {
+      e.preventDefault()
+      if (cp.active) activateCheckpoint(cp)
+    })
+  }
 
   // Only vertical obstacles (buildings/pillars/railings/cliffs) should ever pull the
   // chase camera inward — road/ground meshes are excluded so the camera can't clip
