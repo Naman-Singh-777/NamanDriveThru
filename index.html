@@ -300,6 +300,22 @@
       color: rgba(255, 255, 255, 0.45);
     }
     .checkpoint-overlay__section-heading:not(:first-child) { margin-top: 20px; }
+    /* WEB-PHASE-4 REDO Phase 14: a small icon linking out to the live
+       portfolio site itself, pinned to the far right of the "Projects"
+       heading (Port only) -- separate from the GitHub profile avatar up in
+       the title row above. */
+    .checkpoint-overlay__section-heading--with-badge {
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .checkpoint-overlay__site-badge {
+      flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      color: rgba(255, 255, 255, 0.55);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      transition: color 0.15s ease, border-color 0.15s ease;
+    }
+    .checkpoint-overlay__site-badge:hover { color: #9cc4ff; border-color: rgba(156, 196, 255, 0.5); }
+    .checkpoint-overlay__site-badge svg { width: 16px; height: 16px; }
 
     /* WEB-PHASE-4 REDO Phase 6: Platform's "menu of albums/playlists" grid.
        WEB-PHASE-4 REDO Phase 11: cover art now comes from the cover image
@@ -499,10 +515,28 @@
       transition: transform 0.25s cubic-bezier(.2,.8,.2,1), opacity 0.25s ease;
     }
     #key-unlock-popup.is-visible { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    /* Pill chrome dissolves to transparent while the letters (below) smoke
+       off independently -- the box doesn't move or scale, only fades. */
     #key-unlock-popup.is-poofing {
-      transform: translate(-50%, -50%) scale(1.3);
-      opacity: 0;
-      transition: transform 0.35s cubic-bezier(.4,0,1,1), opacity 0.3s ease;
+      transition: background 0.5s ease 0.2s, border-color 0.5s ease 0.2s,
+                  box-shadow 0.5s ease 0.2s, backdrop-filter 0.5s ease 0.2s;
+      background: rgba(10, 16, 26, 0);
+      border-color: rgba(156, 196, 255, 0);
+      box-shadow: none;
+      backdrop-filter: blur(0px);
+      -webkit-backdrop-filter: blur(0px);
+    }
+    #key-unlock-popup-text span {
+      display: inline-block;
+      will-change: transform, opacity, filter;
+    }
+    #key-unlock-popup.is-poofing #key-unlock-popup-text span {
+      animation: key-popup-smoke-out 0.6s forwards ease-in-out;
+    }
+    @keyframes key-popup-smoke-out {
+      0% { transform: rotate(0deg) translate(0, 0) scale(1); opacity: 1; filter: blur(0px); }
+      50% { filter: blur(5px); }
+      100% { transform: rotate(32deg) translate(9px, -30px) scale(1.7); opacity: 0; filter: blur(11px); }
     }
 
     @media (max-width: 480px) {

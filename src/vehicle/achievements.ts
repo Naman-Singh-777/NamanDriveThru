@@ -87,18 +87,48 @@ function showToast(meta: ShortcutMeta): void {
   toastTimer = window.setTimeout(() => toastEl.classList.remove('is-visible'), 5000)
 }
 
-// Dead center, holds for 2s, then "poofs" away (a quick scale-up + fade,
-// distinct from its gentler scale-in entrance) -- per spec.
+// Splits the popup text into one <span> per letter so the exit animation
+// (see triggerSmokeOut below) can dissipate it letter by letter, per the
+// user-supplied smoke-text reference.
+function setPopupLetters(text: string): void {
+  popupTextEl.textContent = ''
+  for (const ch of text) {
+    const span = document.createElement('span')
+    span.textContent = ch === ' ' ? '\u00A0' : ch
+    popupTextEl.appendChild(span)
+  }
+}
+
+const SMOKE_LETTER_STEP_MS = 9
+const SMOKE_LETTER_MAX_DELAY_MS = 350
+const SMOKE_DURATION_MS = 600
+
+// Staggers each letter's smoke-dissipate animation (CSS does the actual
+// rotate/translate/scale/blur/fade -- see #key-unlock-popup.is-poofing in
+// index.html) and fades the pill's own chrome out alongside it.
+function triggerSmokeOut(): void {
+  const letters = Array.from(popupTextEl.children) as HTMLElement[]
+  letters.forEach((span, i) => {
+    span.style.animationDelay = `${Math.min(i * SMOKE_LETTER_STEP_MS, SMOKE_LETTER_MAX_DELAY_MS)}ms`
+  })
+  popupEl.classList.remove('is-visible')
+  popupEl.classList.add('is-poofing')
+}
+
+// Dead center, holds for 2s, then "poofs" -- a letter-by-letter smoke
+// dissipation, distinct from its gentler scale-in entrance -- per spec.
 function showKeyPopup(meta: ShortcutMeta): void {
   if (popupTimer !== undefined) window.clearTimeout(popupTimer)
   if (popupPoofTimer !== undefined) window.clearTimeout(popupPoofTimer)
   popupEl.classList.remove('is-poofing')
-  popupTextEl.textContent = meta.keyPopupText
+  setPopupLetters(meta.keyPopupText)
   popupEl.classList.add('is-visible')
   popupTimer = window.setTimeout(() => {
-    popupEl.classList.remove('is-visible')
-    popupEl.classList.add('is-poofing')
-    popupPoofTimer = window.setTimeout(() => popupEl.classList.remove('is-poofing'), 360)
+    triggerSmokeOut()
+    popupPoofTimer = window.setTimeout(
+      () => popupEl.classList.remove('is-poofing'),
+      SMOKE_LETTER_MAX_DELAY_MS + SMOKE_DURATION_MS + 100
+    )
   }, 2000)
 }
 
