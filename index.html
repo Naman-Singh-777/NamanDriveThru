@@ -8,6 +8,19 @@
   <meta name="author" content="Naman Singh" />
   <link rel="canonical" href="https://naman-singh-777.github.io/Portfolio-Websiteeeee/" />
 
+  <!-- WEB-PHASE-4 REDO Phase 12 (perf): kicks off the 3D environment's one
+       big download (environment.glb) the moment the HTML head is parsed, in
+       parallel with fetching/parsing the JS bundle -- instead of waiting for
+       JS to finish loading and running before GLTFLoader.load() even starts
+       the fetch. Same file, same bytes, same loader code; this just starts
+       the network request earlier. "crossorigin" is required on an
+       as="fetch" preload (even same-origin) so the browser's GLTFLoader
+       fetch() call later reuses this exact response instead of re-fetching
+       it -- GLTFLoader's underlying FileLoader calls fetch() with its
+       default mode ('cors') and credentials 'same-origin', which is what
+       crossorigin="anonymous" here matches. -->
+  <link rel="preload" href="assets/environment.glb" as="fetch" crossorigin="anonymous" fetchpriority="high" />
+
   <meta property="og:type" content="website" />
   <meta property="og:title" content="Naman Singh — Interactive 3D Driving Portfolio" />
   <meta property="og:description" content="Drive a 3D car through an interactive world built with Three.js and Rapier physics to explore my projects, music and socials." />
