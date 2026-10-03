@@ -32,6 +32,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - run: node scripts/generate-music-manifest.mjs
       - run: npx tsc -b
       - run: npx vite build
       - uses: actions/upload-pages-artifact@v3
@@ -64,6 +65,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - run: node scripts/generate-music-manifest.mjs
       - run: npx tsc -b
       - run: npx vite build
       - uses: aws-actions/configure-aws-credentials@v4

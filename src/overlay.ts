@@ -1,6 +1,19 @@
 import { externalLinks } from './config/externalLinks'
 import type { CheckpointId } from './vehicle/checkpoint'
 import { playLightspeed } from './vehicle/lightspeed'
+import {
+  loadManifest,
+  trackUrl,
+  coverUrl,
+  playTrack,
+  togglePlayPause,
+  playAdjacent,
+  seekTo,
+  onStateChange,
+  getPlaybackState,
+  probeDuration,
+  type Playlist
+} from './vehicle/musicPlayer'
 
 // WEB-PHASE-4: the shared full-screen "glass" overlay all three checkpoints
 // open into. DOM/CSS skeleton lives in index.html (same convention as
@@ -27,42 +40,19 @@ let appEl: HTMLElement
 let titleEl: HTMLElement
 let bodyEl: HTMLElement
 let closeBtn: HTMLElement
-// Persistent, off-screen (not display:none — see index.html CSS) home for
-// each Spotify embed iframe. Moving an iframe between DOM parents does not
-// reload it in any evergreen browser, so parking it here on close (instead
-// of ever letting innerHTML wipe it) is what makes the music keep playing in
-// the background while driving, exactly like leaving a Spotify tab open —
-// no Web Playback SDK / OAuth needed for that.
-let platformHolderEl: HTMLElement
 let openId: CheckpointId | null = null
 let onCloseCb: (() => void) | null = null
 
-// One real <iframe> per configured embed, created once and cached by id so
-// re-opening Platform (or closing it) never recreates/reloads it.
-const platformIframes = new Map<string, HTMLIFrameElement>()
-
-function getOrCreatePlatformIframe(type: string, id: string): HTMLIFrameElement {
-  let el = platformIframes.get(id)
-  if (!el) {
-    el = document.createElement('iframe')
-    el.className = 'checkpoint-overlay__spotify'
-    el.src = `https://open.spotify.com/embed/${type}/${encodeURIComponent(id)}?utm_source=generator&theme=0`
-    el.width = '100%'
-    el.height = '352'
-    el.style.border = '0'
-    // WEB-PHASE-4 REDO Phase 7: NOT 'lazy' -- the browser's native iframe
-    // lazy-loading treats an element parked far outside the viewport (the
-    // off-screen holder below) as "not worth loading/keeping active", which
-    // is exactly what was silently pausing playback while driving with the
-    // overlay closed. 'eager' plus keeping the holder inside real viewport
-    // bounds (see .checkpoint-platform-holder in index.html) is what
-    // actually keeps this iframe alive in the background.
-    el.loading = 'eager'
-    el.allow = 'autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture'
-    platformIframes.set(id, el)
-  }
-  return el
-}
+// WEB-PHASE-4 REDO Phase 11: the Platform player's live UI (play/pause icon,
+// progress, "now playing" row) subscribes to musicPlayer's onStateChange
+// while the player screen is on screen. This holds that subscription's
+// unsubscribe function so it can be dropped the moment the player screen
+// goes away (back button or overlay close) without stopping playback
+// itself -- the persistent <audio> element musicPlayer.ts owns lives
+// directly on document.body, entirely outside bodyEl's markup, so clearing
+// bodyEl.innerHTML on close never touches it and music keeps playing in the
+// background exactly like before, with no DOM-reparenting trick needed.
+let platformUnsub: (() => void) | null = null
 
 export function isOverlayOpen(): boolean {
   return openId !== null
@@ -70,16 +60,11 @@ export function isOverlayOpen(): boolean {
 
 export function closeOverlay(): void {
   if (openId === null) return
-  const wasPlatform = openId === 'platform'
   openId = null
   overlayEl.classList.remove('is-open')
   overlayEl.setAttribute('aria-hidden', 'true')
-  if (wasPlatform) {
-    // Reparent every live Spotify iframe back into the off-screen holder
-    // BEFORE wiping bodyEl, so clearing bodyEl's markup never touches (and
-    // never destroys/reloads) the iframes themselves — playback continues.
-    for (const el of platformIframes.values()) platformHolderEl.appendChild(el)
-  }
+  platformUnsub?.()
+  platformUnsub = null
   bodyEl.innerHTML = ''
   onCloseCb?.()
 }
@@ -105,6 +90,36 @@ const ICON_PATHS: Record<IconKey, string> = {
 }
 function icon(key: IconKey): string {
   return `<svg class="checkpoint-overlay__icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">${ICON_PATHS[key]}</svg>`
+}
+
+// WEB-PHASE-4 REDO Phase 11: small transport glyphs for the self-hosted
+// music player (replacing Spotify's own embedded controls) -- standard,
+// generic play/pause/skip pictograms, same inline-SVG convention as icon()
+// above, no external icon font/image requests.
+type TransportKey = 'play' | 'pause' | 'prev' | 'next'
+const TRANSPORT_PATHS: Record<TransportKey, string> = {
+  play: '<path fill="currentColor" d="M8 5v14l11-7z"/>',
+  pause: '<path fill="currentColor" d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>',
+  prev: '<path fill="currentColor" d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>',
+  next: '<path fill="currentColor" d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>'
+}
+function transportIcon(key: TransportKey): string {
+  return `<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">${TRANSPORT_PATHS[key]}</svg>`
+}
+
+// Placeholder cover glyph for a playlist folder with no image file in it
+// (e.g. the connected "X's-Cigarettes After Sex" folder) -- a plain music
+// note, sized/centered to fill the same cover slot a real cover image would.
+function noCoverGlyph(): string {
+  return `<svg class="checkpoint-overlay__nocover-icon" viewBox="0 0 24 24" width="32" height="32" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6Z"/></svg>`
+}
+
+function formatTime(seconds: number): string {
+  if (!isFinite(seconds) || seconds < 0) return '0:00'
+  const total = Math.floor(seconds)
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  return `${m}:${s.toString().padStart(2, '0')}`
 }
 
 function escapeHtml(s: string): string {
@@ -223,60 +238,36 @@ async function renderPort(): Promise<void> {
   }
 }
 
-// WEB-PHASE-4 REDO Phase 6: Platform now opens into a browsable menu of
-// configured albums/playlists (cover art + title, fetched from Spotify's own
-// public no-auth oEmbed endpoint — no API key/OAuth, same spirit as the
-// embed widget itself) and only shows a specific player once one is picked —
-// "the songs come after". Adding a new entry to externalLinks.spotifyEmbeds
-// is all a future playlist needs; nothing else in this file changes.
-interface SpotifyOEmbedInfo {
-  title: string
-  thumbnailUrl: string
-}
-const oEmbedCache = new Map<string, SpotifyOEmbedInfo>()
-
-async function fetchSpotifyOEmbed(type: string, id: string): Promise<SpotifyOEmbedInfo | null> {
-  const cached = oEmbedCache.get(id)
-  if (cached) return cached
-  try {
-    const canonical = `https://open.spotify.com/${type}/${id}`
-    const res = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(canonical)}`)
-    if (!res.ok) return null
-    const data = await res.json()
-    const info: SpotifyOEmbedInfo = { title: typeof data.title === 'string' ? data.title : 'Untitled', thumbnailUrl: typeof data.thumbnail_url === 'string' ? data.thumbnail_url : '' }
-    oEmbedCache.set(id, info)
-    return info
-  } catch {
-    return null
-  }
-}
-
-// Moves every cached Spotify iframe back into the off-screen holder — same
-// "never destroy, just reparent" technique closeOverlay() already uses, so
-// whatever is playing keeps playing uninterrupted while browsing the menu or
-// switching to a different playlist.
-function parkAllPlatformIframes(): void {
-  for (const el of platformIframes.values()) platformHolderEl.appendChild(el)
-}
-
+// WEB-PHASE-4 REDO Phase 11: Platform's menu of playlists is now backed by
+// the local, self-hosted music library instead of Spotify -- each entry is
+// one subfolder of public/assets/music/ (auto-discovered at build time by
+// scripts/generate-music-manifest.mjs into manifest.json, fetched here via
+// musicPlayer.loadManifest()). Dropping a new folder (with a cover image and
+// its song files inside it) in is all a future playlist needs; nothing else
+// in this file changes. The grid markup/CSS classes below are unchanged
+// from the Spotify-era version on purpose (same "exact same UI" look), just
+// now fed from local data instead of an async Spotify oEmbed fetch.
 async function renderPlatformMenu(): Promise<void> {
-  const embeds = externalLinks.spotifyEmbeds
-  parkAllPlatformIframes()
-  if (embeds.length === 0) {
-    bodyEl.innerHTML = renderMessage('Spotify not configured yet.')
+  bodyEl.innerHTML = `<h3 class="checkpoint-overlay__section-heading">Playlists</h3><p class="checkpoint-overlay__empty">Loading playlists&hellip;</p>`
+  const manifest = await loadManifest()
+  if (openId !== 'platform') return // overlay closed/changed while this was in flight
+  const playlists = manifest.playlists
+  if (playlists.length === 0) {
+    bodyEl.innerHTML = renderMessage('No music folders found yet.')
     return
   }
   bodyEl.innerHTML = `
     <h3 class="checkpoint-overlay__section-heading">Playlists</h3>
     <ul class="checkpoint-overlay__spotify-menu">
-      ${embeds
-        .map(
-          (e, i) => `
-        <li class="checkpoint-overlay__spotify-card" data-embed-index="${i}" tabindex="0" role="button">
-          <span class="checkpoint-overlay__spotify-cover" data-cover-index="${i}"></span>
-          <span class="checkpoint-overlay__spotify-title" data-title-index="${i}">Loading&hellip;</span>
+      ${playlists
+        .map((p, i) => {
+          const cover = coverUrl(p)
+          return `
+        <li class="checkpoint-overlay__spotify-card" data-playlist-index="${i}" tabindex="0" role="button">
+          <span class="checkpoint-overlay__spotify-cover"${cover ? ` style="background-image:url('${cover.replace(/'/g, '%27')}')"` : ''}>${cover ? '' : noCoverGlyph()}</span>
+          <span class="checkpoint-overlay__spotify-title">${escapeHtml(p.title)}</span>
         </li>`
-        )
+        })
         .join('')}
     </ul>
   `
@@ -284,7 +275,7 @@ async function renderPlatformMenu(): Promise<void> {
   cards.forEach((card, i) => {
     const activate = () => {
       if (openId !== 'platform') return
-      showPlatformPlayer(embeds[i].type, embeds[i].id)
+      showPlatformPlayer(playlists, i)
     }
     card.addEventListener('click', activate)
     card.addEventListener('keydown', (e) => {
@@ -294,34 +285,127 @@ async function renderPlatformMenu(): Promise<void> {
       }
     })
   })
-  for (let i = 0; i < embeds.length; i++) {
-    const embed = embeds[i]
-    void fetchSpotifyOEmbed(embed.type, embed.id).then((info) => {
-      if (openId !== 'platform') return // overlay closed/changed while this was in flight
-      const coverEl = bodyEl.querySelector<HTMLElement>(`[data-cover-index="${i}"]`)
-      const titleEl2 = bodyEl.querySelector<HTMLElement>(`[data-title-index="${i}"]`)
-      if (!coverEl || !titleEl2) return // menu already replaced by a selected player
-      if (info) {
-        if (info.thumbnailUrl) coverEl.style.backgroundImage = `url('${info.thumbnailUrl.replace(/'/g, "%27")}')`
-        titleEl2.textContent = info.title
-      } else {
-        titleEl2.textContent = embed.type.charAt(0).toUpperCase() + embed.type.slice(1)
-      }
-    })
-  }
 }
 
-function showPlatformPlayer(type: string, id: string): void {
-  const iframe = getOrCreatePlatformIframe(type, id)
+// WEB-PHASE-4 REDO Phase 11: replaces the old single-persistent-Spotify-
+// iframe player with a custom transport UI driven by musicPlayer.ts's
+// persistent <audio> engine (HRTF-panned + synthesized-reverb "surround"
+// signal chain, ducking the map's own SFX while playing). The <audio>
+// element itself lives outside this panel's markup (appended straight to
+// document.body by musicPlayer.ts), so it is never touched when bodyEl is
+// wiped on back-navigation or overlay close -- playback keeps going in the
+// background exactly like the old iframe-parking trick did, without any
+// DOM reparenting needed here.
+function showPlatformPlayer(playlists: Playlist[], playlistIdx: number): void {
+  platformUnsub?.()
+  platformUnsub = null
+  const playlist = playlists[playlistIdx]
+  const cover = coverUrl(playlist)
+
   bodyEl.innerHTML = `
     <button type="button" class="checkpoint-overlay__back-link">&larr; Back to playlists</button>
-    <div class="checkpoint-overlay__spotify-player"></div>
+    <div class="checkpoint-overlay__player">
+      <div class="checkpoint-overlay__player-cover"${cover ? ` style="background-image:url('${cover.replace(/'/g, '%27')}')"` : ''}>${cover ? '' : noCoverGlyph()}</div>
+      <div class="checkpoint-overlay__player-title">${escapeHtml(playlist.title)}</div>
+      <div class="checkpoint-overlay__transport">
+        <button type="button" class="checkpoint-overlay__transport-btn" data-action="prev" aria-label="Previous track">${transportIcon('prev')}</button>
+        <button type="button" class="checkpoint-overlay__transport-btn checkpoint-overlay__transport-btn--play" data-action="toggle" aria-label="Play">${transportIcon('play')}</button>
+        <button type="button" class="checkpoint-overlay__transport-btn" data-action="next" aria-label="Next track">${transportIcon('next')}</button>
+      </div>
+      <div class="checkpoint-overlay__scrub-row">
+        <span class="checkpoint-overlay__time" data-time="current">0:00</span>
+        <input type="range" class="checkpoint-overlay__scrubber" min="0" max="1000" value="0" aria-label="Seek" />
+        <span class="checkpoint-overlay__time" data-time="total">0:00</span>
+      </div>
+    </div>
+    <ul class="checkpoint-overlay__tracklist">
+      ${playlist.tracks
+        .map(
+          (t, i) => `
+        <li class="checkpoint-overlay__track" data-track-index="${i}" tabindex="0" role="button">
+          <span class="checkpoint-overlay__track-num">${i + 1}</span>
+          <span class="checkpoint-overlay__track-title">${escapeHtml(t.title)}</span>
+          <span class="checkpoint-overlay__track-duration" data-duration-index="${i}">&hellip;</span>
+        </li>`
+        )
+        .join('')}
+    </ul>
   `
-  bodyEl.querySelector('.checkpoint-overlay__spotify-player')!.appendChild(iframe) // same node — playback untouched
+
   bodyEl.querySelector('.checkpoint-overlay__back-link')!.addEventListener('click', () => {
     if (openId !== 'platform') return
+    platformUnsub?.()
+    platformUnsub = null
     void renderPlatformMenu()
   })
+
+  const playerEl = bodyEl.querySelector<HTMLElement>('.checkpoint-overlay__player')!
+  const toggleBtn = playerEl.querySelector<HTMLButtonElement>('[data-action="toggle"]')!
+  const prevBtn = playerEl.querySelector<HTMLButtonElement>('[data-action="prev"]')!
+  const nextBtn = playerEl.querySelector<HTMLButtonElement>('[data-action="next"]')!
+  const scrubberEl = playerEl.querySelector<HTMLInputElement>('.checkpoint-overlay__scrubber')!
+  const curTimeEl = playerEl.querySelector<HTMLElement>('[data-time="current"]')!
+  const totalTimeEl = playerEl.querySelector<HTMLElement>('[data-time="total"]')!
+  const trackRows = Array.from(bodyEl.querySelectorAll<HTMLLIElement>('.checkpoint-overlay__track'))
+
+  let scrubbing = false
+
+  const startOrToggle = () => {
+    const state = getPlaybackState()
+    if (state.playlistIdx === playlistIdx && state.trackIdx !== -1) togglePlayPause()
+    else void playTrack(playlist, playlistIdx, 0)
+  }
+  toggleBtn.addEventListener('click', startOrToggle)
+  prevBtn.addEventListener('click', () => playAdjacent(-1))
+  nextBtn.addEventListener('click', () => playAdjacent(1))
+  scrubberEl.addEventListener('input', () => {
+    scrubbing = true
+  })
+  scrubberEl.addEventListener('change', () => {
+    seekTo(Number(scrubberEl.value) / 1000)
+    scrubbing = false
+  })
+
+  trackRows.forEach((row, i) => {
+    const activate = () => void playTrack(playlist, playlistIdx, i)
+    row.addEventListener('click', activate)
+    row.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        activate()
+      }
+    })
+  })
+
+  // Lazy per-track duration, same pattern Spotify's own tracklist used to
+  // show -- probed from a detached, never-played <audio>, not ffprobe.
+  playlist.tracks.forEach((t, i) => {
+    void probeDuration(trackUrl(playlist, t)).then((d) => {
+      if (openId !== 'platform') return
+      const el = bodyEl.querySelector<HTMLElement>(`[data-duration-index="${i}"]`)
+      if (el) el.textContent = d !== null ? formatTime(d) : '--:--'
+    })
+  })
+
+  function sync(): void {
+    const state = getPlaybackState()
+    const isThis = state.playlistIdx === playlistIdx
+    toggleBtn.innerHTML = isThis && state.isPlaying ? transportIcon('pause') : transportIcon('play')
+    toggleBtn.setAttribute('aria-label', isThis && state.isPlaying ? 'Pause' : 'Play')
+    trackRows.forEach((row, i) => row.classList.toggle('is-playing', isThis && state.trackIdx === i))
+    if (isThis) {
+      curTimeEl.textContent = formatTime(state.currentTime)
+      totalTimeEl.textContent = formatTime(state.duration)
+      if (!scrubbing) scrubberEl.value = String(state.duration > 0 ? Math.round((state.currentTime / state.duration) * 1000) : 0)
+    } else {
+      curTimeEl.textContent = '0:00'
+      totalTimeEl.textContent = '0:00'
+      if (!scrubbing) scrubberEl.value = '0'
+    }
+  }
+
+  platformUnsub = onStateChange(sync)
+  sync()
 }
 
 function renderPlatform(): void {
@@ -408,7 +492,6 @@ export function initOverlay(onClose: () => void): void {
   titleEl = document.getElementById('checkpoint-overlay-title')!
   bodyEl = document.getElementById('checkpoint-overlay-body')!
   closeBtn = document.getElementById('checkpoint-overlay-close')!
-  platformHolderEl = document.getElementById('checkpoint-platform-holder')!
   appEl = document.getElementById('app')!
   onCloseCb = onClose
 

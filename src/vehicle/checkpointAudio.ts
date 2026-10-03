@@ -15,11 +15,41 @@
 // called after one).
 
 let ctx: AudioContext | null = null
+// WEB-PHASE-4 REDO Phase 11: every SFX node below routes through this single
+// master gain instead of straight to ctx.destination, so setSfxDucking() can
+// turn the map's sound effects down while music is playing without touching
+// each cue's own internal gain envelope.
+let sfxMaster: GainNode | null = null
 
 function getCtx(): AudioContext {
-  if (!ctx) ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
+  if (!ctx) {
+    ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
+    sfxMaster = ctx.createGain()
+    sfxMaster.gain.value = 1
+    sfxMaster.connect(ctx.destination)
+  }
   if (ctx.state === 'suspended') void ctx.resume()
   return ctx
+}
+
+// Shared across the whole app (see src/vehicle/musicPlayer.ts) so the
+// checkpoint cues and the music player are nodes on the ONE real
+// AudioContext a page is meant to have, not two independent ones.
+export function getSharedAudioContext(): AudioContext {
+  return getCtx()
+}
+
+// Called by musicPlayer.ts whenever a track starts/stops playing -- ramps
+// the map's own sound effects (proximity cue, activation chime) down to a
+// lower volume while music is audible, and back up to full once it isn't,
+// rather than a hard, clicky cut.
+export function setSfxDucking(active: boolean): void {
+  getCtx() // ensures sfxMaster exists
+  const g = sfxMaster!.gain
+  const now = ctx!.currentTime
+  g.cancelScheduledValues(now)
+  g.setValueAtTime(g.value, now)
+  g.linearRampToValueAtTime(active ? 0.35 : 1, now + 0.35)
 }
 
 let noiseBuffer: AudioBuffer | null = null
@@ -58,7 +88,7 @@ export function playProximityCue(): void {
   shimmerGain.gain.linearRampToValueAtTime(0, t0 + duration)
   shimmer.connect(shimmerFilter)
   shimmerFilter.connect(shimmerGain)
-  shimmerGain.connect(c.destination)
+  shimmerGain.connect(sfxMaster!)
   shimmer.start(t0)
   shimmer.stop(t0 + duration)
 
@@ -78,7 +108,7 @@ export function playProximityCue(): void {
     g.gain.exponentialRampToValueAtTime(0.0008, start + 0.09)
     osc.connect(blipFilter)
     blipFilter.connect(g)
-    g.connect(c.destination)
+    g.connect(sfxMaster!)
     osc.start(start)
     osc.stop(start + 0.1)
   })
@@ -92,7 +122,7 @@ export function playActivationChime(): void {
   const notes = [660, 880, 1108, 1320] // a bright, clean quasi-arpeggio
   const master = c.createGain()
   master.gain.value = 0.11
-  master.connect(c.destination)
+  master.connect(sfxMaster!)
 
   notes.forEach((freq, i) => {
     const start = t0 + i * 0.07

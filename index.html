@@ -258,7 +258,6 @@
     .checkpoint-overlay__icon { flex-shrink: 0; }
     .checkpoint-overlay__menu a:hover, .checkpoint-overlay__social a:hover { color: #9cc4ff; }
     .checkpoint-overlay__desc { color: rgba(255, 255, 255, 0.5); font-size: 13px; }
-    .checkpoint-overlay__spotify { border-radius: 12px; margin-bottom: 14px; display: block; }
     .checkpoint-overlay__section-heading {
       margin: 0 0 10px; font-size: 11px; font-weight: 700;
       letter-spacing: 0.18em; text-transform: uppercase;
@@ -266,10 +265,12 @@
     }
     .checkpoint-overlay__section-heading:not(:first-child) { margin-top: 20px; }
 
-    /* WEB-PHASE-4 REDO Phase 6: Platform's "menu of albums/playlists" grid —
-       cover art fetched from Spotify's public oEmbed endpoint (overlay.ts),
-       click one -> its persistent player replaces this grid (see
-       .checkpoint-overlay__back-link / __spotify-player below). */
+    /* WEB-PHASE-4 REDO Phase 6: Platform's "menu of albums/playlists" grid.
+       WEB-PHASE-4 REDO Phase 11: cover art now comes from the cover image
+       file inside each local public/assets/music/<folder>/ (musicPlayer.ts),
+       not Spotify's oEmbed endpoint -- same grid markup/classes, just fed by
+       local data. Click one -> its player replaces this grid (see
+       .checkpoint-overlay__back-link / __player below). */
     .checkpoint-overlay__spotify-menu {
       list-style: none; margin: 0; padding: 0;
       display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
@@ -301,22 +302,85 @@
       font-family: inherit;
     }
     .checkpoint-overlay__back-link:hover { color: #9cc4ff; }
-    .checkpoint-overlay__spotify-player .checkpoint-overlay__spotify { margin-bottom: 0; }
 
-    /* WEB-PHASE-4 REDO: home for the Platform checkpoint's Spotify embed
-       iframe(s) while the overlay is closed -- see overlay.ts. Reparenting an
-       iframe between DOM locations does not reload it in any evergreen
-       browser, so this is what lets a selected track/album keep playing in
-       the background while driving, same as leaving a Spotify tab open.
-       WEB-PHASE-4 REDO Phase 7: kept INSIDE real viewport bounds (bottom-right
-       corner, 1x1px, invisible) rather than at -99999px -- parking it that far
-       outside the viewport was what let the browser's intersection-based
-       lazy-loading (see el.loading in overlay.ts) treat it as "not visible,
-       not worth keeping active" and silently pause playback. A 1x1px corner
-       pixel still counts as on-screen, so the embed is never throttled. */
-    .checkpoint-platform-holder {
-      position: fixed; right: 0; bottom: 0;
-      width: 1px; height: 1px; overflow: hidden; pointer-events: none; opacity: 0;
+    /* WEB-PHASE-4 REDO Phase 11: self-hosted player UI (replaces the old
+       Spotify iframe) -- same dark-glass aesthetic as the rest of the panel.
+       The <audio> element itself is owned/appended by src/vehicle/
+       musicPlayer.ts directly to document.body, outside this markup, so it
+       is never destroyed when bodyEl is cleared on back/close. */
+    .checkpoint-overlay__player {
+      display: flex; flex-direction: column; align-items: center;
+      text-align: center; gap: 10px; padding-bottom: 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.10); margin-bottom: 14px;
+    }
+    .checkpoint-overlay__player-cover {
+      width: 148px; height: 148px; border-radius: 10px;
+      background-color: rgba(255, 255, 255, 0.08);
+      background-size: cover; background-position: center;
+      display: flex; align-items: center; justify-content: center;
+      color: rgba(255, 255, 255, 0.35);
+    }
+    .checkpoint-overlay__player-title {
+      font-size: 15px; font-weight: 700; color: rgba(255, 255, 255, 0.95);
+      line-height: 1.3;
+    }
+    .checkpoint-overlay__transport {
+      display: flex; align-items: center; justify-content: center; gap: 18px;
+    }
+    .checkpoint-overlay__transport-btn {
+      background: none; border: none; cursor: pointer; padding: 6px;
+      color: rgba(255, 255, 255, 0.75); display: flex; border-radius: 50%;
+      transition: color 0.15s ease, background 0.15s ease;
+    }
+    .checkpoint-overlay__transport-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.08); }
+    .checkpoint-overlay__transport-btn--play {
+      color: #fff; background: rgba(255, 255, 255, 0.14);
+      width: 44px; height: 44px; align-items: center; justify-content: center;
+    }
+    .checkpoint-overlay__transport-btn--play:hover { background: rgba(255, 255, 255, 0.22); }
+    .checkpoint-overlay__scrub-row {
+      display: flex; align-items: center; gap: 8px; width: 100%;
+    }
+    .checkpoint-overlay__time {
+      font-size: 11px; color: rgba(255, 255, 255, 0.5); min-width: 32px;
+      font-variant-numeric: tabular-nums;
+    }
+    .checkpoint-overlay__scrubber {
+      flex: 1; -webkit-appearance: none; appearance: none;
+      height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.18);
+      outline: none; cursor: pointer;
+    }
+    .checkpoint-overlay__scrubber::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 11px; height: 11px; border-radius: 50%;
+      background: #9cc4ff; cursor: pointer;
+    }
+    .checkpoint-overlay__scrubber::-moz-range-thumb {
+      width: 11px; height: 11px; border-radius: 50%; border: none;
+      background: #9cc4ff; cursor: pointer;
+    }
+    .checkpoint-overlay__nocover-icon { opacity: 0.6; }
+    .checkpoint-overlay__tracklist { list-style: none; margin: 0; padding: 0; }
+    .checkpoint-overlay__track {
+      display: flex; align-items: center; gap: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 10px 4px; cursor: pointer; border-radius: 6px;
+    }
+    .checkpoint-overlay__track:first-child { border-top: none; }
+    .checkpoint-overlay__track:hover { background: rgba(255, 255, 255, 0.05); }
+    .checkpoint-overlay__track.is-playing { background: rgba(156, 196, 255, 0.10); }
+    .checkpoint-overlay__track.is-playing .checkpoint-overlay__track-title { color: #9cc4ff; }
+    .checkpoint-overlay__track-num {
+      width: 18px; flex-shrink: 0; text-align: right;
+      font-size: 12px; color: rgba(255, 255, 255, 0.4);
+      font-variant-numeric: tabular-nums;
+    }
+    .checkpoint-overlay__track-title {
+      flex: 1; font-size: 14px; color: rgba(255, 255, 255, 0.9);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .checkpoint-overlay__track-duration {
+      font-size: 12px; color: rgba(255, 255, 255, 0.45);
+      font-variant-numeric: tabular-nums; flex-shrink: 0;
     }
 
     @media (max-width: 560px) {
@@ -377,10 +441,11 @@
     </div>
   </div>
 
-  <!-- WEB-PHASE-4 REDO: persistent off-screen home for the Platform
-       checkpoint's Spotify iframe(s) so music keeps playing in the
-       background across overlay close/reopen -- see overlay.ts. -->
-  <div id="checkpoint-platform-holder" class="checkpoint-platform-holder" aria-hidden="true"></div>
+  <!-- WEB-PHASE-4 REDO Phase 8: full-screen canvas the "light speed" warp
+       transition renders into right before a checkpoint overlay opens/closes
+       -- see src/vehicle/lightspeed.ts. (Music now plays via a persistent
+       <audio> element musicPlayer.ts appends straight to document.body, so
+       no separate off-screen holder element is needed here any more.) -->
   <div id="lightspeed-overlay" aria-hidden="true"></div>
 
   <script type="module" src="/src/main.ts"></script>
