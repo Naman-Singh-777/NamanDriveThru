@@ -253,23 +253,28 @@
       cursor: pointer;
     }
     .checkpoint-overlay__close:hover { background: rgba(255, 255, 255, 0.16); }
-    /* WEB-PHASE-4 REDO Phase 13: a small clickable GitHub avatar, shown only
-       while the Port overlay specifically is open (panel gets .is-port in
-       overlay.ts's openOverlay/closeOverlay) -- sits left of the existing
-       close button so the two never collide. */
-    .checkpoint-overlay__github-badge {
-      position: absolute; top: 16px; right: 56px;
-      width: 32px; height: 32px; border-radius: 50%;
-      border: 1px solid rgba(255, 255, 255, 0.25);
-      overflow: hidden; display: none;
+    /* WEB-PHASE-4 REDO Phase 13: title + the GitHub avatar badge share one
+       row, badge pinned to the far right of the "PROJECTS" heading itself
+       (not floating up by the close button) -- shown only while the Port
+       overlay specifically is open (row gets .is-port in overlay.ts's
+       openOverlay/closeOverlay). */
+    .checkpoint-overlay__title-row {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; margin: 0 0 18px;
     }
-    #checkpoint-overlay-panel.is-port .checkpoint-overlay__github-badge { display: block; }
-    .checkpoint-overlay__github-badge img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .checkpoint-overlay__title {
-      margin: 0 0 18px; font-size: 13px; font-weight: 700;
+      margin: 0; font-size: 13px; font-weight: 700;
       letter-spacing: 0.22em; text-transform: uppercase;
       color: rgba(255, 255, 255, 0.7);
     }
+    .checkpoint-overlay__github-badge {
+      flex-shrink: 0;
+      width: 26px; height: 26px; border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      overflow: hidden; display: none;
+    }
+    .checkpoint-overlay__title-row.is-port .checkpoint-overlay__github-badge { display: block; }
+    .checkpoint-overlay__github-badge img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .checkpoint-overlay__body { overflow-y: auto; flex: 1; }
     .checkpoint-overlay__empty { color: rgba(255, 255, 255, 0.55); font-size: 14px; margin: 8px 0; }
     .checkpoint-overlay__menu, .checkpoint-overlay__social { list-style: none; margin: 0; padding: 0; }
@@ -473,26 +478,35 @@
     /* Separate, shorter-lived popup explaining the key just unlocked --
        always exactly 3s on screen per spec, top-center so it never overlaps
        the achievement toast's bottom-right corner or the touch D-pad. */
+    /* WEB-PHASE-4 REDO Phase 13: fires 2s after the checkpoint menu
+       actually closes (see notifyOverlayClosed() in achievements.ts), dead
+       center, holds 2s, then "poofs" -- a quick scale-up + fade distinct
+       from its gentler scale-in entrance. */
     #key-unlock-popup {
-      position: fixed; top: max(18px, 2.5vh); left: 50%; z-index: 70;
-      transform: translate(-50%, -10px);
-      background: rgba(10, 16, 26, 0.82);
+      position: fixed; top: 50%; left: 50%; z-index: 70;
+      transform: translate(-50%, -50%) scale(0.85);
+      background: rgba(10, 16, 26, 0.86);
       border: 1px solid rgba(156, 196, 255, 0.35);
       border-radius: 999px;
-      padding: 9px 20px;
+      padding: 11px 24px;
       color: #cfe0ff;
-      font: 600 13px/1.3 system-ui, sans-serif;
+      font: 600 14px/1.3 system-ui, sans-serif;
       white-space: nowrap;
       opacity: 0;
       pointer-events: none;
       backdrop-filter: blur(6px);
       -webkit-backdrop-filter: blur(6px);
-      transition: transform 0.25s ease, opacity 0.25s ease;
+      transition: transform 0.25s cubic-bezier(.2,.8,.2,1), opacity 0.25s ease;
     }
-    #key-unlock-popup.is-visible { transform: translate(-50%, 0); opacity: 1; }
+    #key-unlock-popup.is-visible { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    #key-unlock-popup.is-poofing {
+      transform: translate(-50%, -50%) scale(1.3);
+      opacity: 0;
+      transition: transform 0.35s cubic-bezier(.4,0,1,1), opacity 0.3s ease;
+    }
 
     @media (max-width: 480px) {
-      #key-unlock-popup { white-space: normal; text-align: center; max-width: calc(100vw - 36px); }
+      #key-unlock-popup { white-space: normal; text-align: center; max-width: calc(100vw - 48px); }
     }
 
     /* WEB-PHASE-4 REDO Phase 13: touch-only equivalent of the M/G/C keyboard
@@ -562,10 +576,12 @@
   <div id="checkpoint-overlay" aria-hidden="true">
     <div id="checkpoint-overlay-panel" role="dialog" aria-modal="true" aria-labelledby="checkpoint-overlay-title">
       <button id="checkpoint-overlay-close" aria-label="Close" type="button">&times;</button>
-      <a id="checkpoint-overlay-github" class="checkpoint-overlay__github-badge" target="_blank" rel="noopener noreferrer" aria-label="GitHub profile">
-        <img id="checkpoint-overlay-github-avatar" alt="" />
-      </a>
-      <h2 id="checkpoint-overlay-title" class="checkpoint-overlay__title"></h2>
+      <div id="checkpoint-overlay-title-row" class="checkpoint-overlay__title-row">
+        <h2 id="checkpoint-overlay-title" class="checkpoint-overlay__title"></h2>
+        <a id="checkpoint-overlay-github" class="checkpoint-overlay__github-badge" target="_blank" rel="noopener noreferrer" aria-label="GitHub profile">
+          <img id="checkpoint-overlay-github-avatar" alt="" />
+        </a>
+      </div>
       <div id="checkpoint-overlay-body" class="checkpoint-overlay__body"></div>
     </div>
   </div>

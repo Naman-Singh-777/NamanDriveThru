@@ -76,38 +76,59 @@ let popupEl: HTMLElement
 let popupTextEl: HTMLElement
 let toastTimer: number | undefined
 let popupTimer: number | undefined
+let popupPoofTimer: number | undefined
 
+// Bottom-right, holds for 5s, per spec.
 function showToast(meta: ShortcutMeta): void {
   if (toastTimer !== undefined) window.clearTimeout(toastTimer)
   toastTitleEl.textContent = meta.achievementTitle
   toastSubEl.textContent = meta.achievementSubtitle
   toastEl.classList.add('is-visible')
-  toastTimer = window.setTimeout(() => toastEl.classList.remove('is-visible'), 4800)
+  toastTimer = window.setTimeout(() => toastEl.classList.remove('is-visible'), 5000)
 }
 
-// Exactly 3 seconds on screen, per spec.
+// Dead center, holds for 2s, then "poofs" away (a quick scale-up + fade,
+// distinct from its gentler scale-in entrance) -- per spec.
 function showKeyPopup(meta: ShortcutMeta): void {
   if (popupTimer !== undefined) window.clearTimeout(popupTimer)
+  if (popupPoofTimer !== undefined) window.clearTimeout(popupPoofTimer)
+  popupEl.classList.remove('is-poofing')
   popupTextEl.textContent = meta.keyPopupText
   popupEl.classList.add('is-visible')
-  popupTimer = window.setTimeout(() => popupEl.classList.remove('is-visible'), 3000)
+  popupTimer = window.setTimeout(() => {
+    popupEl.classList.remove('is-visible')
+    popupEl.classList.add('is-poofing')
+    popupPoofTimer = window.setTimeout(() => popupEl.classList.remove('is-poofing'), 360)
+  }, 2000)
 }
 
 function revealChip(id: CheckpointId): void {
   document.getElementById(META[id].chipId)?.classList.add('is-unlocked')
 }
 
+// Holds the checkpoint whose key-unlock popup is still owed -- set by
+// registerVisit() on a genuine first visit, consumed by notifyOverlayClosed()
+// once that checkpoint's menu actually closes (see main.ts/overlay.ts).
+let pendingKeyPopup: CheckpointId | null = null
+
 // Called from activateCheckpoint() in main.ts -- the one shared path every
 // activation (ENTER, a touch prompt tap, or an already-unlocked M/G/C
 // shortcut/chip) already goes through. A no-op after the real first visit.
 export function registerVisit(id: CheckpointId): void {
   if (!markVisited(id)) return
-  const meta = META[id]
   revealChip(id)
-  showToast(meta)
-  // Staggered slightly behind the achievement toast so the two don't both
-  // land on screen in the same instant.
-  window.setTimeout(() => showKeyPopup(meta), 650)
+  showToast(META[id])
+  pendingKeyPopup = id
+}
+
+// Called from main.ts's overlay-close callback with whichever checkpoint
+// just closed. Only fires (2s later, per spec) when that close belongs to a
+// first-ever visit still owed its key-unlock popup -- a no-op on every
+// ordinary close after that.
+export function notifyOverlayClosed(id: CheckpointId): void {
+  if (pendingKeyPopup !== id) return
+  pendingKeyPopup = null
+  window.setTimeout(() => showKeyPopup(META[id]), 2000)
 }
 
 // onActivate: the same (id) => activateCheckpoint(...) callback main.ts

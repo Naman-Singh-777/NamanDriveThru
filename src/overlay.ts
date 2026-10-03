@@ -30,6 +30,7 @@ const TITLES: Record<CheckpointId, string> = {
 
 let overlayEl: HTMLElement
 let panelEl: HTMLElement
+let titleRowEl: HTMLElement
 // WEB-PHASE-4 REDO Phase 9: the main driving-scene canvas -- this, not the
 // glass panel, is what gets inverted during a checkpoint visit (see
 // requestOpenOverlay/requestCloseOverlay below). The backdrop-filter blur on
@@ -41,7 +42,7 @@ let titleEl: HTMLElement
 let bodyEl: HTMLElement
 let closeBtn: HTMLElement
 let openId: CheckpointId | null = null
-let onCloseCb: (() => void) | null = null
+let onCloseCb: ((closedId: CheckpointId) => void) | null = null
 
 // WEB-PHASE-4 REDO Phase 11: the Platform player's live UI (play/pause icon,
 // progress, "now playing" row) subscribes to musicPlayer's onStateChange
@@ -60,14 +61,15 @@ export function isOverlayOpen(): boolean {
 
 export function closeOverlay(): void {
   if (openId === null) return
+  const closedId = openId
   openId = null
   overlayEl.classList.remove('is-open')
   overlayEl.setAttribute('aria-hidden', 'true')
-  panelEl.classList.remove('is-port')
+  titleRowEl.classList.remove('is-port')
   platformUnsub?.()
   platformUnsub = null
   bodyEl.innerHTML = ''
-  onCloseCb?.()
+  onCloseCb?.(closedId)
 }
 
 // WEB-PHASE-4 REDO Phase 7: a small inline icon in front of every anchor's
@@ -456,7 +458,7 @@ export function openOverlay(id: CheckpointId): void {
   titleEl.textContent = TITLES[id]
   overlayEl.classList.add('is-open')
   overlayEl.setAttribute('aria-hidden', 'false')
-  panelEl.classList.toggle('is-port', id === 'port')
+  titleRowEl.classList.toggle('is-port', id === 'port')
 
   if (id === 'port') void renderPort()
   else if (id === 'platform') renderPlatform()
@@ -500,19 +502,21 @@ function requestCloseOverlay(): void {
 // light-speed flash finishes) — the caller (main.ts) uses it to know
 // playback/driving focus has returned to the 3D scene, without this module
 // needing to know anything about checkpoints.
-export function initOverlay(onClose: () => void): void {
+export function initOverlay(onClose: (closedId: CheckpointId) => void): void {
   overlayEl = document.getElementById('checkpoint-overlay')!
   panelEl = document.getElementById('checkpoint-overlay-panel')!
+  titleRowEl = document.getElementById('checkpoint-overlay-title-row')!
   titleEl = document.getElementById('checkpoint-overlay-title')!
   bodyEl = document.getElementById('checkpoint-overlay-body')!
   closeBtn = document.getElementById('checkpoint-overlay-close')!
   appEl = document.getElementById('app')!
   onCloseCb = onClose
 
-  // WEB-PHASE-4 REDO Phase 13: top-right GitHub avatar badge, shown only
-  // while Port is open (panelEl.is-port, toggled in openOverlay/closeOverlay
-  // above). Static -- the same githubUsername Port's project list already
-  // reads from -- so it's wired once here rather than re-rendered per open.
+  // WEB-PHASE-4 REDO Phase 13: GitHub avatar badge inline at the far right
+  // of the title row, shown only while Port is open (titleRowEl.is-port,
+  // toggled in openOverlay/closeOverlay above). Static -- the same
+  // githubUsername Port's project list already reads from -- so it's wired
+  // once here rather than re-rendered per open.
   const githubBadge = document.getElementById('checkpoint-overlay-github') as HTMLAnchorElement
   const githubAvatar = document.getElementById('checkpoint-overlay-github-avatar') as HTMLImageElement
   const ghUser = externalLinks.githubUsername.trim()

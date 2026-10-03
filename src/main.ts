@@ -18,7 +18,7 @@ import { createCheckpoints, updateCheckpoints, triggerActivation, type Checkpoin
 import { playActivationChime } from './vehicle/checkpointAudio'
 import { addRoadEndCaps, type RoadEndCapDef } from './scene/roadEndCaps'
 import { initOverlay, requestOpenOverlay, isOverlayOpen } from './overlay'
-import { initAchievements, registerVisit, hasVisited } from './vehicle/achievements'
+import { initAchievements, registerVisit, hasVisited, notifyOverlayClosed } from './vehicle/achievements'
 
 const loadingEl = document.getElementById('loading')!
 const loadingFill = document.getElementById('loading-fill')!
@@ -288,9 +288,12 @@ async function main(): Promise<void> {
   addRoadEndCaps(scene, env.root, roadEndCapDefs)
 
   let activeCheckpoint: Checkpoint | null = null
-  initOverlay(() => {
-    // overlay just closed -- nothing extra needed, driving resumes next frame
-    // because the physics loop below checks isOverlayOpen() itself.
+  initOverlay((closedId) => {
+    // overlay just closed -- driving resumes next frame because the physics
+    // loop below checks isOverlayOpen() itself. Also the trigger for the
+    // key-unlock popup (WEB-PHASE-4 REDO Phase 13): fires 2s from here, but
+    // only when closedId still owes one (a genuine first visit).
+    notifyOverlayClosed(closedId)
   })
 
   type CamMode = 'normal' | 'front' | 'left' | 'right' | 'left1' | 'right1' | 'overview'
