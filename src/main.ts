@@ -14,10 +14,11 @@ import { DiagnosticCamera } from './vehicle/diagnosticCamera'
 import { SideDiagnosticCamera } from './vehicle/sideDiagnosticCamera'
 import { HeroCamera } from './vehicle/heroCamera'
 import { OverviewCamera } from './vehicle/overviewCamera'
-import { createCheckpoints, updateCheckpoints, triggerActivation, type Checkpoint, type CheckpointDef } from './vehicle/checkpoint'
+import { createCheckpoints, updateCheckpoints, triggerActivation, type Checkpoint, type CheckpointDef, type CheckpointId } from './vehicle/checkpoint'
 import { playActivationChime } from './vehicle/checkpointAudio'
 import { addRoadEndCaps, type RoadEndCapDef } from './scene/roadEndCaps'
 import { initOverlay, requestOpenOverlay, isOverlayOpen } from './overlay'
+import { initAchievements, registerVisit, hasVisited } from './vehicle/achievements'
 
 const loadingEl = document.getElementById('loading')!
 const loadingFill = document.getElementById('loading-fill')!
@@ -325,8 +326,21 @@ async function main(): Promise<void> {
     triggerActivation(cp, vehicle.position)
     playActivationChime()
     shakeTime = SHAKE_DURATION
+    registerVisit(cp.def.id) // one-shot achievement + key-unlock popup, first visit only
     requestOpenOverlay(cp.def.id) // plays the light-speed flash, then actually opens
   }
+
+  // WEB-PHASE-4 REDO Phase 13: once a checkpoint has been visited for real
+  // (driven into, not just via its own shortcut), M/G/C reopen its menu
+  // from anywhere on the map -- same activateCheckpoint() path as ENTER, so
+  // "the same animation and popup" spec is satisfied for free. Also the
+  // touch-chip tap target wired in initAchievements() below.
+  function activateCheckpointById(id: CheckpointId): void {
+    if (!hasVisited(id) || isOverlayOpen()) return
+    const cp = checkpoints.find((c) => c.def.id === id)
+    if (cp) activateCheckpoint(cp)
+  }
+  initAchievements(activateCheckpointById)
 
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return
@@ -339,6 +353,12 @@ async function main(): Promise<void> {
       if (activeCheckpoint) activateCheckpoint(activeCheckpoint)
       return
     }
+    // WEB-PHASE-4 REDO Phase 13: M/G/C reopen Music/Projects/Connect from
+    // anywhere, once that checkpoint has been visited for real at least
+    // once (activateCheckpointById no-ops otherwise -- see above).
+    if (e.code === 'KeyM') { activateCheckpointById('platform'); return }
+    if (e.code === 'KeyG') { activateCheckpointById('port'); return }
+    if (e.code === 'KeyC') { activateCheckpointById('city'); return }
     let next: CamMode
     if (e.code === 'KeyF') next = camMode === 'front' ? 'normal' : 'front'
     else if (e.code === 'KeyL' && e.shiftKey) next = camMode === 'left1' ? 'normal' : 'left1'
@@ -390,6 +410,11 @@ async function main(): Promise<void> {
 
   loadingFill.style.width = '100%'
   loadingEl.style.display = 'none'
+  // WEB-PHASE-4 REDO Phase 13: on-screen touch controls (D-pad/brake/shortcut
+  // chips) stay hidden via CSS (index.html) until this class is set -- i.e.
+  // only once the game has actually finished loading and the vehicle is
+  // drivable, not the instant bindTouchControls() runs earlier in main().
+  document.documentElement.classList.add('is-ready')
 
   const clock = new THREE.Clock()
   const FIXED_DT = 1 / 60

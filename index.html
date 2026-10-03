@@ -124,13 +124,19 @@
       letter-spacing: 0.06em;
     }
 
+    /* WEB-PHASE-4 REDO Phase 13: both "show touch controls" rules below also
+       require html.is-ready, a class main.ts adds only once loading finishes
+       and the vehicle is actually drivable (previously the D-pad could
+       appear immediately on a touch device while "Loading environment..."
+       was still on screen). html[data-input-mode="pointer"] below is
+       unaffected -- it only ever hides, never shows. */
     @media (pointer: coarse) {
-      #touch-controls { display: block; }
+      html.is-ready #touch-controls { display: block; }
     }
     /* Higher specificity than the plain #touch-controls rule above (and than
        the media-query version, since specificity doesn't care which rule is
        inside a media block) -- wins once JS has observed a real interaction. */
-    html[data-input-mode="touch"] #touch-controls { display: block; }
+    html.is-ready[data-input-mode="touch"] #touch-controls { display: block; }
     html[data-input-mode="pointer"] #touch-controls { display: none; }
 
     /* WEB-PHASE-4 REDO Phase 10: touch/phone devices have no Enter key, so
@@ -247,6 +253,18 @@
       cursor: pointer;
     }
     .checkpoint-overlay__close:hover { background: rgba(255, 255, 255, 0.16); }
+    /* WEB-PHASE-4 REDO Phase 13: a small clickable GitHub avatar, shown only
+       while the Port overlay specifically is open (panel gets .is-port in
+       overlay.ts's openOverlay/closeOverlay) -- sits left of the existing
+       close button so the two never collide. */
+    .checkpoint-overlay__github-badge {
+      position: absolute; top: 16px; right: 56px;
+      width: 32px; height: 32px; border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      overflow: hidden; display: none;
+    }
+    #checkpoint-overlay-panel.is-port .checkpoint-overlay__github-badge { display: block; }
+    .checkpoint-overlay__github-badge img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .checkpoint-overlay__title {
       margin: 0 0 18px; font-size: 13px; font-weight: 700;
       letter-spacing: 0.22em; text-transform: uppercase;
@@ -415,6 +433,101 @@
       transition: opacity 0.12s ease;
     }
     #lightspeed-overlay.is-active { opacity: 1; }
+
+    /* WEB-PHASE-4 REDO Phase 13: Steam-style "Achievement Unlocked" toast,
+       fired once per checkpoint on its genuine first visit (see
+       registerVisit() in src/vehicle/achievements.ts, called from
+       activateCheckpoint() in main.ts). z-index above both the checkpoint
+       overlay and the light-speed canvas so it's never hidden behind either
+       while the unlock happens. */
+    #achievement-toast {
+      position: fixed; right: 18px; bottom: 18px; z-index: 70;
+      display: flex; align-items: center; gap: 12px;
+      background: linear-gradient(165deg, #1b2534, #0d1420);
+      border: 1px solid rgba(255, 196, 77, 0.45);
+      border-radius: 10px;
+      padding: 12px 18px 12px 14px;
+      max-width: min(320px, calc(100vw - 36px));
+      color: #e8edf5;
+      font-family: system-ui, sans-serif;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+      transform: translateY(16px) scale(0.97);
+      opacity: 0;
+      pointer-events: none;
+      transition: transform 0.3s cubic-bezier(.2,.8,.2,1), opacity 0.3s ease;
+    }
+    #achievement-toast.is-visible { transform: translateY(0) scale(1); opacity: 1; }
+    .achievement-toast__icon {
+      flex-shrink: 0; width: 34px; height: 34px; border-radius: 7px;
+      background: linear-gradient(160deg, #ffd977, #c98a1f);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .achievement-toast__label {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.14em;
+      text-transform: uppercase; color: #ffc44d; margin: 0 0 3px;
+    }
+    .achievement-toast__title { font-size: 14px; font-weight: 700; margin: 0 0 2px; line-height: 1.25; }
+    .achievement-toast__subtitle { font-size: 12px; color: rgba(255, 255, 255, 0.6); margin: 0; line-height: 1.3; }
+
+    /* Separate, shorter-lived popup explaining the key just unlocked --
+       always exactly 3s on screen per spec, top-center so it never overlaps
+       the achievement toast's bottom-right corner or the touch D-pad. */
+    #key-unlock-popup {
+      position: fixed; top: max(18px, 2.5vh); left: 50%; z-index: 70;
+      transform: translate(-50%, -10px);
+      background: rgba(10, 16, 26, 0.82);
+      border: 1px solid rgba(156, 196, 255, 0.35);
+      border-radius: 999px;
+      padding: 9px 20px;
+      color: #cfe0ff;
+      font: 600 13px/1.3 system-ui, sans-serif;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      transition: transform 0.25s ease, opacity 0.25s ease;
+    }
+    #key-unlock-popup.is-visible { transform: translate(-50%, 0); opacity: 1; }
+
+    @media (max-width: 480px) {
+      #key-unlock-popup { white-space: normal; text-align: center; max-width: calc(100vw - 36px); }
+    }
+
+    /* WEB-PHASE-4 REDO Phase 13: touch-only equivalent of the M/G/C keyboard
+       shortcuts (phones have no keyboard) -- small pulsing badge chips,
+       hidden until html.is-ready (same loading gate as #touch-controls) and
+       individually hidden again until that specific checkpoint has actually
+       been visited once (see .is-unlocked, toggled by achievements.ts).
+       Stacked top-right, clear of the pedals/steer D-pad which live at the
+       bottom corners. */
+    #shortcut-chips {
+      position: fixed; top: max(14px, 2vh); right: max(14px, 2.5vw); z-index: 16;
+      display: none;
+      flex-direction: column; gap: 10px;
+      pointer-events: none;
+    }
+    html.is-ready[data-input-mode="touch"] #shortcut-chips { display: flex; }
+    .shortcut-chip {
+      width: 40px; height: 40px; border-radius: 50%;
+      display: none;
+      align-items: center; justify-content: center;
+      font: 700 15px/1 system-ui, sans-serif;
+      color: #0a0f18;
+      border: 2px solid rgba(255, 255, 255, 0.55);
+      -webkit-tap-highlight-color: transparent;
+      touch-action: none;
+      animation: shortcut-chip-pulse 2.4s ease-in-out infinite;
+    }
+    .shortcut-chip.is-unlocked { display: flex; pointer-events: auto; }
+    #shortcut-chip-platform { background: #7fe3b4; }
+    #shortcut-chip-port { background: #6fb8ff; }
+    #shortcut-chip-city { background: #ffc477; }
+    @keyframes shortcut-chip-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.28); }
+      50% { box-shadow: 0 0 0 7px rgba(255, 255, 255, 0); }
+    }
   </style>
 </head>
 <body>
@@ -449,6 +562,9 @@
   <div id="checkpoint-overlay" aria-hidden="true">
     <div id="checkpoint-overlay-panel" role="dialog" aria-modal="true" aria-labelledby="checkpoint-overlay-title">
       <button id="checkpoint-overlay-close" aria-label="Close" type="button">&times;</button>
+      <a id="checkpoint-overlay-github" class="checkpoint-overlay__github-badge" target="_blank" rel="noopener noreferrer" aria-label="GitHub profile">
+        <img id="checkpoint-overlay-github-avatar" alt="" />
+      </a>
       <h2 id="checkpoint-overlay-title" class="checkpoint-overlay__title"></h2>
       <div id="checkpoint-overlay-body" class="checkpoint-overlay__body"></div>
     </div>
@@ -460,6 +576,26 @@
        <audio> element musicPlayer.ts appends straight to document.body, so
        no separate off-screen holder element is needed here any more.) -->
   <div id="lightspeed-overlay" aria-hidden="true"></div>
+
+  <!-- WEB-PHASE-4 REDO Phase 13: Steam-style achievement toast + key-unlock
+       popup + touch-only shortcut chips -- see src/vehicle/achievements.ts,
+       the sole module that fills/toggles these. -->
+  <div id="achievement-toast" role="status" aria-live="polite">
+    <div class="achievement-toast__icon">&#9733;</div>
+    <div>
+      <p class="achievement-toast__label">Achievement Unlocked</p>
+      <p class="achievement-toast__title" id="achievement-toast-title"></p>
+      <p class="achievement-toast__subtitle" id="achievement-toast-subtitle"></p>
+    </div>
+  </div>
+  <div id="key-unlock-popup" role="status" aria-live="polite">
+    <span id="key-unlock-popup-text"></span>
+  </div>
+  <div id="shortcut-chips">
+    <div id="shortcut-chip-platform" class="shortcut-chip" role="button" aria-label="Reopen Music">M</div>
+    <div id="shortcut-chip-port" class="shortcut-chip" role="button" aria-label="Reopen Projects">G</div>
+    <div id="shortcut-chip-city" class="shortcut-chip" role="button" aria-label="Reopen Connect">C</div>
+  </div>
 
   <script type="module" src="/src/main.ts"></script>
 </body>

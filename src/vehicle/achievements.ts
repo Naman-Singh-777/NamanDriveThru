@@ -1,0 +1,132 @@
+import type { CheckpointId } from './checkpoint'
+
+// WEB-PHASE-4 REDO Phase 13: Steam-style "Achievement Unlocked" toast + a
+// short key-unlock popup, fired exactly once per checkpoint the very first
+// time it's genuinely activated (ENTER while inside it, or the touch "OPEN"
+// prompt tap -- see activateCheckpoint() in main.ts, the single call site
+// every activation path already converges on). After that first visit, the
+// matching keyboard shortcut (M/G/C) -- or, on touch devices with no
+// keyboard, a small on-screen shortcut chip -- stays permanently available
+// (tracked in localStorage, so it survives reloads) to reopen that
+// checkpoint's menu from anywhere on the map, through the exact same
+// requestOpenOverlay() light-speed animation every other entry point uses.
+// DOM/CSS skeleton lives in index.html (same convention as touch-controls
+// and the checkpoint overlay); this module only wires behaviour.
+
+const STORAGE_PREFIX = 'wf13:visited:'
+
+export function hasVisited(id: CheckpointId): boolean {
+  try {
+    return localStorage.getItem(STORAGE_PREFIX + id) === '1'
+  } catch {
+    return false
+  }
+}
+
+// Returns true only the first time this is ever called for a given id (the
+// localStorage write "sticks" across reloads) -- false on every later call,
+// including every call this same session after the first.
+function markVisited(id: CheckpointId): boolean {
+  if (hasVisited(id)) return false
+  try {
+    localStorage.setItem(STORAGE_PREFIX + id, '1')
+  } catch {
+    // localStorage unavailable (private mode, etc.) -- harmless: the
+    // achievement/popup just replay next time instead of staying one-shot,
+    // and the touch chip won't persist across a reload either.
+  }
+  return true
+}
+
+interface ShortcutMeta {
+  chipId: string
+  achievementTitle: string
+  achievementSubtitle: string
+  keyPopupText: string
+}
+
+// Copy run through the /humanizer skill per the user's explicit request --
+// satirical, self-aware, tied to the visitor's own growing curiosity, not
+// generic "Achievement Unlocked: Checkpoint Found" filler.
+const META: Record<CheckpointId, ShortcutMeta> = {
+  platform: {
+    chipId: 'shortcut-chip-platform',
+    achievementTitle: 'Judging My Music Taste',
+    achievementSubtitle: 'You found the playlists. Be nice about it.',
+    keyPopupText: 'Press M anytime to jump back into Music.'
+  },
+  port: {
+    chipId: 'shortcut-chip-port',
+    achievementTitle: 'Stalking the Commit History',
+    achievementSubtitle: "Reading my code like it's gossip now, huh?",
+    keyPopupText: 'Press G anytime to reopen Projects.'
+  },
+  city: {
+    chipId: 'shortcut-chip-city',
+    achievementTitle: 'Added to Close Friends (Hopefully)',
+    achievementSubtitle: 'Found the socials. No turning back now.',
+    keyPopupText: 'Press C anytime to reopen Connect.'
+  }
+}
+
+let toastEl: HTMLElement
+let toastTitleEl: HTMLElement
+let toastSubEl: HTMLElement
+let popupEl: HTMLElement
+let popupTextEl: HTMLElement
+let toastTimer: number | undefined
+let popupTimer: number | undefined
+
+function showToast(meta: ShortcutMeta): void {
+  if (toastTimer !== undefined) window.clearTimeout(toastTimer)
+  toastTitleEl.textContent = meta.achievementTitle
+  toastSubEl.textContent = meta.achievementSubtitle
+  toastEl.classList.add('is-visible')
+  toastTimer = window.setTimeout(() => toastEl.classList.remove('is-visible'), 4800)
+}
+
+// Exactly 3 seconds on screen, per spec.
+function showKeyPopup(meta: ShortcutMeta): void {
+  if (popupTimer !== undefined) window.clearTimeout(popupTimer)
+  popupTextEl.textContent = meta.keyPopupText
+  popupEl.classList.add('is-visible')
+  popupTimer = window.setTimeout(() => popupEl.classList.remove('is-visible'), 3000)
+}
+
+function revealChip(id: CheckpointId): void {
+  document.getElementById(META[id].chipId)?.classList.add('is-unlocked')
+}
+
+// Called from activateCheckpoint() in main.ts -- the one shared path every
+// activation (ENTER, a touch prompt tap, or an already-unlocked M/G/C
+// shortcut/chip) already goes through. A no-op after the real first visit.
+export function registerVisit(id: CheckpointId): void {
+  if (!markVisited(id)) return
+  const meta = META[id]
+  revealChip(id)
+  showToast(meta)
+  // Staggered slightly behind the achievement toast so the two don't both
+  // land on screen in the same instant.
+  window.setTimeout(() => showKeyPopup(meta), 650)
+}
+
+// onActivate: the same (id) => activateCheckpoint(...) callback main.ts
+// wires to the M/G/C keydown branches -- reused here so tapping an
+// already-unlocked chip on a touch device opens the exact same way.
+export function initAchievements(onActivate: (id: CheckpointId) => void): void {
+  toastEl = document.getElementById('achievement-toast')!
+  toastTitleEl = document.getElementById('achievement-toast-title')!
+  toastSubEl = document.getElementById('achievement-toast-subtitle')!
+  popupEl = document.getElementById('key-unlock-popup')!
+  popupTextEl = document.getElementById('key-unlock-popup-text')!
+
+  for (const id of Object.keys(META) as CheckpointId[]) {
+    // Returning visitor: reveal whichever chips already unlocked in a
+    // previous session, with no toast/popup replay.
+    if (hasVisited(id)) revealChip(id)
+    document.getElementById(META[id].chipId)?.addEventListener('pointerup', (e) => {
+      e.preventDefault()
+      onActivate(id)
+    })
+  }
+}

@@ -63,6 +63,7 @@ export function closeOverlay(): void {
   openId = null
   overlayEl.classList.remove('is-open')
   overlayEl.setAttribute('aria-hidden', 'true')
+  panelEl.classList.remove('is-port')
   platformUnsub?.()
   platformUnsub = null
   bodyEl.innerHTML = ''
@@ -379,13 +380,25 @@ function showPlatformPlayer(playlists: Playlist[], playlistIdx: number): void {
 
   // Lazy per-track duration, same pattern Spotify's own tracklist used to
   // show -- probed from a detached, never-played <audio>, not ffprobe.
-  playlist.tracks.forEach((t, i) => {
-    void probeDuration(trackUrl(playlist, t)).then((d) => {
+  // WEB-PHASE-4 REDO Phase 13 (perf): throttled to a handful of concurrent
+  // probes instead of firing every track's metadata fetch in one burst --
+  // a large playlist (e.g. 17 tracks) was opening that many simultaneous
+  // requests, which is what actually made opening it feel sluggish (the
+  // manifest/cover payloads themselves are a few KB each and were never the
+  // bottleneck).
+  const DURATION_PROBE_CONCURRENCY = 4
+  let probeCursor = 0
+  const probeNext = (): void => {
+    const i = probeCursor++
+    if (i >= playlist.tracks.length || openId !== 'platform') return
+    void probeDuration(trackUrl(playlist, playlist.tracks[i])).then((d) => {
       if (openId !== 'platform') return
       const el = bodyEl.querySelector<HTMLElement>(`[data-duration-index="${i}"]`)
       if (el) el.textContent = d !== null ? formatTime(d) : '--:--'
+      probeNext()
     })
-  })
+  }
+  for (let k = 0; k < Math.min(DURATION_PROBE_CONCURRENCY, playlist.tracks.length); k++) probeNext()
 
   function sync(): void {
     const state = getPlaybackState()
@@ -443,6 +456,7 @@ export function openOverlay(id: CheckpointId): void {
   titleEl.textContent = TITLES[id]
   overlayEl.classList.add('is-open')
   overlayEl.setAttribute('aria-hidden', 'false')
+  panelEl.classList.toggle('is-port', id === 'port')
 
   if (id === 'port') void renderPort()
   else if (id === 'platform') renderPlatform()
@@ -494,6 +508,19 @@ export function initOverlay(onClose: () => void): void {
   closeBtn = document.getElementById('checkpoint-overlay-close')!
   appEl = document.getElementById('app')!
   onCloseCb = onClose
+
+  // WEB-PHASE-4 REDO Phase 13: top-right GitHub avatar badge, shown only
+  // while Port is open (panelEl.is-port, toggled in openOverlay/closeOverlay
+  // above). Static -- the same githubUsername Port's project list already
+  // reads from -- so it's wired once here rather than re-rendered per open.
+  const githubBadge = document.getElementById('checkpoint-overlay-github') as HTMLAnchorElement
+  const githubAvatar = document.getElementById('checkpoint-overlay-github-avatar') as HTMLImageElement
+  const ghUser = externalLinks.githubUsername.trim()
+  if (ghUser) {
+    githubBadge.href = externalLinks.social.github || `https://github.com/${ghUser}`
+    githubAvatar.src = `https://github.com/${ghUser}.png?size=64`
+    githubAvatar.alt = `${ghUser} on GitHub`
+  }
 
   closeBtn.addEventListener('click', requestCloseOverlay)
   overlayEl.addEventListener('click', (e) => {
