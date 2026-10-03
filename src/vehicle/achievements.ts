@@ -75,16 +75,29 @@ let toastSubEl: HTMLElement
 let popupEl: HTMLElement
 let popupTextEl: HTMLElement
 let toastTimer: number | undefined
+let toastHideTimer: number | undefined
 let popupTimer: number | undefined
 let popupPoofTimer: number | undefined
 
-// Bottom-right, holds for 5s, per spec.
+const TOAST_TRANSITION_MS = 300
+
+// Bottom-right, holds for 5s, per spec. display stays 'none' at rest (not
+// just opacity:0) and is only flipped on for the duration it's actually
+// shown -- a reported "perpetual translucent box" in this corner traced to
+// a GPU-compositor ghost on an element that's opacity:0 but still live in
+// the render tree; display:none removes that possibility entirely.
 function showToast(meta: ShortcutMeta): void {
   if (toastTimer !== undefined) window.clearTimeout(toastTimer)
+  if (toastHideTimer !== undefined) window.clearTimeout(toastHideTimer)
   toastTitleEl.textContent = meta.achievementTitle
   toastSubEl.textContent = meta.achievementSubtitle
+  toastEl.style.display = 'flex'
+  void toastEl.offsetWidth // force a layout flush so display:none -> flex doesn't eat the transition
   toastEl.classList.add('is-visible')
-  toastTimer = window.setTimeout(() => toastEl.classList.remove('is-visible'), 5000)
+  toastTimer = window.setTimeout(() => {
+    toastEl.classList.remove('is-visible')
+    toastHideTimer = window.setTimeout(() => { toastEl.style.display = 'none' }, TOAST_TRANSITION_MS)
+  }, 5000)
 }
 
 // Splits the popup text into one <span> per letter so the exit animation
@@ -117,18 +130,21 @@ function triggerSmokeOut(): void {
 
 // Dead center, holds for 2s, then "poofs" -- a letter-by-letter smoke
 // dissipation, distinct from its gentler scale-in entrance -- per spec.
+// Same display:none-at-rest guard as the achievement toast above.
 function showKeyPopup(meta: ShortcutMeta): void {
   if (popupTimer !== undefined) window.clearTimeout(popupTimer)
   if (popupPoofTimer !== undefined) window.clearTimeout(popupPoofTimer)
   popupEl.classList.remove('is-poofing')
   setPopupLetters(meta.keyPopupText)
+  popupEl.style.display = 'block'
+  void popupEl.offsetWidth
   popupEl.classList.add('is-visible')
   popupTimer = window.setTimeout(() => {
     triggerSmokeOut()
-    popupPoofTimer = window.setTimeout(
-      () => popupEl.classList.remove('is-poofing'),
-      SMOKE_LETTER_MAX_DELAY_MS + SMOKE_DURATION_MS + 100
-    )
+    popupPoofTimer = window.setTimeout(() => {
+      popupEl.classList.remove('is-poofing')
+      popupEl.style.display = 'none'
+    }, SMOKE_LETTER_MAX_DELAY_MS + SMOKE_DURATION_MS + 100)
   }, 2000)
 }
 

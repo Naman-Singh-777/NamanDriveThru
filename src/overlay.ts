@@ -444,15 +444,26 @@ function renderPlatform(): void {
   void renderPlatformMenu()
 }
 
+// WEB-PHASE-4 REDO Phase 15: an email entry copies the address to the
+// clipboard instead of opening a mailto: link, which otherwise just dumps
+// the visitor on whatever "choose a mail app" prompt their OS/browser has
+// -- per explicit request. Every other entry still opens its real link.
+interface CityEntry {
+  label: string
+  icon: IconKey
+  href?: string
+  copy?: string
+}
+
 function renderCity(): void {
   const s = externalLinks.social
   const github = s.github || (externalLinks.githubUsername ? `https://github.com/${externalLinks.githubUsername}` : '')
-  const entries: { label: string; href: string; icon: IconKey }[] = []
+  const entries: CityEntry[] = []
   if (github) entries.push({ label: 'GitHub', href: github, icon: 'github' })
   if (s.linkedin) entries.push({ label: 'LinkedIn', href: s.linkedin, icon: 'linkedin' })
   if (s.instagram) entries.push({ label: 'Instagram', href: s.instagram, icon: 'instagram' })
-  if (s.email) entries.push({ label: 'Email', href: `mailto:${s.email}`, icon: 'email' })
-  if (s.email2) entries.push({ label: 'Email (alt)', href: `mailto:${s.email2}`, icon: 'email' })
+  if (s.email) entries.push({ label: 'Email', copy: s.email, icon: 'email' })
+  if (s.email2) entries.push({ label: 'Email (alt)', copy: s.email2, icon: 'email' })
 
   if (entries.length === 0) {
     bodyEl.innerHTML = renderMessage('Social links not configured yet.')
@@ -461,12 +472,35 @@ function renderCity(): void {
   bodyEl.innerHTML = `
     <ul class="checkpoint-overlay__social">
       ${entries
-        .map(
-          (e) => `<li><a href="${escapeHtml(e.href)}" target="_blank" rel="noopener noreferrer">${icon(e.icon)}${escapeHtml(e.label)}</a></li>`
+        .map((e, i) =>
+          e.copy
+            ? `<li><button type="button" class="checkpoint-overlay__copy-btn" data-copy-index="${i}">${icon(e.icon)}${escapeHtml(e.label)}</button><span class="checkpoint-overlay__desc" data-copy-feedback="${i}">Click to copy</span></li>`
+            : `<li><a href="${escapeHtml(e.href!)}" target="_blank" rel="noopener noreferrer">${icon(e.icon)}${escapeHtml(e.label)}</a></li>`
         )
         .join('')}
     </ul>
   `
+  bodyEl.querySelectorAll<HTMLButtonElement>('[data-copy-index]').forEach((btn) => {
+    const entry = entries[Number(btn.dataset.copyIndex)]
+    if (!entry.copy) return
+    const address = entry.copy
+    btn.addEventListener('click', () => {
+      void navigator.clipboard
+        .writeText(address)
+        .then(() => {
+          const fb = bodyEl.querySelector(`[data-copy-feedback="${btn.dataset.copyIndex}"]`)
+          if (!fb) return
+          fb.textContent = 'Copied!'
+          window.setTimeout(() => {
+            fb.textContent = 'Click to copy'
+          }, 1500)
+        })
+        .catch(() => {
+          // Clipboard permission denied/unavailable -- harmless no-op, the
+          // address is still shown right there to select and copy by hand.
+        })
+    })
+  })
 }
 
 export function openOverlay(id: CheckpointId): void {
