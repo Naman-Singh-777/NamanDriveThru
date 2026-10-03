@@ -13,6 +13,10 @@ const VEHICLE_RE = /^vehicle_/i
 const RAILING_RE = /(railing|cityrail_(toprail|lowrail|balusters|post))/i
 const DRIVABLE_RE = /^(road_|intersection|openplatform_pad|port_dock|port_structure|port_quayextension|port_quaypilings|roaddetail_strip)/i
 const BLOCKING_RE = /(cliff|terrain|bedrockshelf|rock_master|terraindetail|city_building|city_tower|city_industrial_mass|citydetail_|port_crane|cargo_ship|ship_|container_group|portdetail_barrier|portdetail_bollard|portdetail_containerextra|portdetail_fueltank|portdetail_utilitybox|roaddetail_barrier|platformdetail_pylon|platform_fascia|platform_canopy|platform_pillar|platform_monument|streetlight|ocean)/i
+// WEB-PHASE-4 REDO Phase 12: mirrors WALL_RESTITUTION in roadBoundaries.ts --
+// same mild bounce-back, applied to railing colliders only (see role ===
+// 'railing' below), not to cliffs/buildings/terrain/etc.
+const RAILING_RESTITUTION = 0.4
 
 export interface ColliderStats {
   drivable: number
@@ -61,7 +65,13 @@ function extractWorldTriangles(mesh: THREE.Mesh): { vertices: Float32Array; indi
   return { vertices, indices }
 }
 
-function addFallbackBoxCollider(mesh: THREE.Mesh, world: RAPIER.World): void {
+// WEB-PHASE-4 REDO Phase 12: `restitution`, when given, is applied with the
+// Max combine rule so it's the value that governs contact regardless of the
+// vehicle's own collider restitution (vehicle.ts untouched) -- used only for
+// railings below, per the explicit "railings should deflect, not hard stop"
+// request. Every other caller (fallback boxes for drivable/blocking meshes
+// whose trimesh failed) omits it and keeps the previous dead-stop behaviour.
+function addFallbackBoxCollider(mesh: THREE.Mesh, world: RAPIER.World, restitution?: number): void {
   const box = new THREE.Box3().setFromObject(mesh)
   if (box.isEmpty()) return
   const size = new THREE.Vector3()
@@ -72,7 +82,11 @@ function addFallbackBoxCollider(mesh: THREE.Mesh, world: RAPIER.World): void {
   const hy = Math.max(size.y / 2, 0.05)
   const hz = Math.max(size.z / 2, 0.05)
   const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(center.x, center.y, center.z))
-  world.createCollider(RAPIER.ColliderDesc.cuboid(hx, hy, hz), body)
+  let colliderDesc = RAPIER.ColliderDesc.cuboid(hx, hy, hz)
+  if (restitution !== undefined) {
+    colliderDesc = colliderDesc.setRestitution(restitution).setRestitutionCombineRule(RAPIER.CoefficientCombineRule.Max)
+  }
+  world.createCollider(colliderDesc, body)
 }
 
 export function buildStaticColliders(root: THREE.Object3D, world: RAPIER.World): ColliderStats {
@@ -110,7 +124,10 @@ export function buildStaticColliders(root: THREE.Object3D, world: RAPIER.World):
     // buildings, cliffs, the ship, cranes) keep real per-triangle trimesh
     // collision, since a box would badly misrepresent their actual shape.
     if (role === 'railing') {
-      addFallbackBoxCollider(mesh, world)
+      // Same mild bounce-back as the road-edge walls (roadBoundaries.ts) --
+      // explicitly requested so hitting a railing nudges the car back
+      // toward the road instead of stopping it dead against it.
+      addFallbackBoxCollider(mesh, world, RAILING_RESTITUTION)
       stats.railing++
       return
     }

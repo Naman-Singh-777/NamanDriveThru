@@ -39,15 +39,25 @@ function roadMatchingMaterial(root: THREE.Object3D): THREE.MeshStandardMaterial 
   })
   if (found) {
     const src = found as THREE.MeshStandardMaterial
+    // WEB-PHASE-4 REDO Phase 12: MAT_ROAD also carries a real baked emissive
+    // tint (#0a232b, intensity 1) -- confirmed directly off the real
+    // material via a headless GLTFLoader probe, same technique already used
+    // for MAT_LaneMark_PORT above. The cap previously copied only
+    // color/roughness/metalness, dropping that emissive component, which is
+    // exactly why the Port cap read as a visibly different tone from the
+    // real road it's attached to in this night scene: the real road glows
+    // faintly, the cap didn't.
     return new THREE.MeshStandardMaterial({
       color: src.color.clone(),
       roughness: src.roughness,
-      metalness: src.metalness
+      metalness: src.metalness,
+      emissive: src.emissive.clone(),
+      emissiveIntensity: src.emissiveIntensity
     })
   }
   // Fallback (should not happen -- MAT_ROAD is confirmed present on all three
-  // destination roads): a plain dark asphalt tone, same ballpark as MAT_ROAD.
-  return new THREE.MeshStandardMaterial({ color: 0x3f4248, roughness: 1, metalness: 0 })
+  // destination roads): the same real color/emissive, hardcoded.
+  return new THREE.MeshStandardMaterial({ color: 0x3f4248, roughness: 1, metalness: 0, emissive: 0x0a232b, emissiveIntensity: 1 })
 }
 
 // WEB-PHASE-4 REDO Phase 9: the cap's painted-line arc was originally a

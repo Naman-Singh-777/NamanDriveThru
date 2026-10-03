@@ -46,6 +46,13 @@ const ROAD_RE = /^road_/i
 
 const WALL_HEIGHT = 14
 const WALL_THICKNESS = 1.6
+// WEB-PHASE-4 REDO Phase 12: mild bounce-back off road-edge/junction walls
+// (see buildWallSegment/buildSide) -- 0 was a dead stop with no push away
+// from the wall at all, which made a near-head-on hit feel like slamming
+// into concrete and needing a long reverse to get clear. 1.0 would be a
+// springy, unrealistic bounce; this sits well below that, just enough to
+// visibly nudge the car back toward the road on contact.
+const WALL_RESTITUTION = 0.4
 // Minimum remaining sub-interval length worth building a collider for, after
 // subtracting a major-area overlap -- avoids a degenerate sliver wall from a
 // near-exact boundary-coordinate coincidence.
@@ -156,7 +163,17 @@ export function buildRoadBoundaries(root: THREE.Object3D, world: RAPIER.World): 
       .setTranslation(x, y + WALL_HEIGHT / 2 - 2, z)
       .setRotation(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw))
     const body = world.createRigidBody(bodyDesc)
+    // WEB-PHASE-4 REDO Phase 12: a soft bounce-back instead of a dead stop --
+    // explicitly requested ("deflect the car towards the road, not hard
+    // stop"). A road-side wall's own normal already points back in toward
+    // the road by construction, so restitution alone naturally pushes the
+    // car that direction on contact; Max combine rule makes this value the
+    // one that applies regardless of whatever restitution the vehicle's own
+    // collider has (vehicle.ts untouched). No other collider property
+    // (friction, placement, shape) changed.
     const colliderDesc = RAPIER.ColliderDesc.cuboid(WALL_THICKNESS / 2, WALL_HEIGHT / 2, halfLen)
+      .setRestitution(WALL_RESTITUTION)
+      .setRestitutionCombineRule(RAPIER.CoefficientCombineRule.Max)
     world.createCollider(colliderDesc, body)
     walls++
   }
@@ -303,9 +320,12 @@ export function buildJunctionBoundaries(root: THREE.Object3D, world: RAPIER.Worl
       const z = axisIsX ? mid : fixedCoord
       const bodyDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(x, y + WALL_HEIGHT / 2 - 2, z)
       const body = world.createRigidBody(bodyDesc)
-      const colliderDesc = axisIsX
+      const colliderDesc = (axisIsX
         ? RAPIER.ColliderDesc.cuboid(WALL_THICKNESS / 2, WALL_HEIGHT / 2, halfLen)
         : RAPIER.ColliderDesc.cuboid(halfLen, WALL_HEIGHT / 2, WALL_THICKNESS / 2)
+      )
+        .setRestitution(WALL_RESTITUTION)
+        .setRestitutionCombineRule(RAPIER.CoefficientCombineRule.Max)
       world.createCollider(colliderDesc, body)
       walls++
     }

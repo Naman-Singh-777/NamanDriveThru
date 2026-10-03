@@ -134,29 +134,52 @@ function ensureEngine(): void {
   wetGain.connect(musicGain)
   musicGain.connect(ctx.destination)
 
+  // WEB-PHASE-4 REDO Phase 12 (perf fix): the orbit loop now only runs
+  // while a track is actually audible. It used to start once, unconditionally,
+  // the very first time any track was ever played, and then run forever via
+  // its own self-scheduled requestAnimationFrame -- even after pausing, even
+  // after leaving the Platform checkpoint, for the rest of the session. That
+  // extra rAF callback firing every frame, forever, alongside the main
+  // driving scene's own animate loop (and a second WebGL context during the
+  // lightspeed transition) was a real, continuous drag once music had been
+  // used even once. It now starts on 'play' and stops on 'pause'/'ended', so
+  // the common state (paused or never played) costs nothing.
   let orbitT = 0
-  const orbit = () => {
+  const orbitTick = () => {
     orbitT += 1 / 60
     const angle = orbitT * 0.12 // slow drift -- a full lap takes roughly 50s
     panner!.positionX.value = Math.sin(angle) * 1.6
     panner!.positionZ.value = Math.cos(angle) * 1.6 - 1
     panner!.positionY.value = Math.sin(angle * 0.5) * 0.4
-    orbitRaf = requestAnimationFrame(orbit)
+    orbitRaf = requestAnimationFrame(orbitTick)
   }
-  orbit()
+  const startOrbit = () => {
+    if (orbitRaf === null) orbitTick()
+  }
+  const stopOrbit = () => {
+    if (orbitRaf !== null) {
+      cancelAnimationFrame(orbitRaf)
+      orbitRaf = null
+    }
+  }
 
   // Map sound effects (checkpoint proximity/activation cues) duck to a lower
   // volume while music is actually audible, and recover once it isn't --
   // the explicit "sound effects of the map at a lower volume" request.
   audioEl.addEventListener('play', () => {
     setSfxDucking(true)
+    startOrbit()
     notify()
   })
   audioEl.addEventListener('pause', () => {
     setSfxDucking(false)
+    stopOrbit()
     notify()
   })
-  audioEl.addEventListener('ended', () => void playNextInCurrent())
+  audioEl.addEventListener('ended', () => {
+    stopOrbit() // playNextInCurrent() restarts it via the next 'play' event if there is a next track
+    void playNextInCurrent()
+  })
   audioEl.addEventListener('timeupdate', notify)
   audioEl.addEventListener('loadedmetadata', notify)
 
