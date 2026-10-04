@@ -7,6 +7,24 @@
   <meta name="description" content="Drive a 3D car through an interactive Three.js + Rapier physics world to explore Naman Singh's projects, music and socials. Built with TypeScript, Three.js, Vite and Blender." />
   <meta name="author" content="Naman Singh" />
   <link rel="canonical" href="https://naman-singh-777.github.io/Portfolio-Websiteeeee/" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+
+  <!-- WEB-PHASE-4 REDO Phase 18: a <meta> CSP is the only CSP this site can
+       serve -- GitHub Pages hosts static files only and does not let a repo
+       set custom HTTP response headers, so there is no real CSP/HSTS/
+       X-Content-Type-Options/Permissions-Policy/COOP/CORP here, meta-tag
+       or otherwise (those first four are headers-only; a <meta> tag cannot
+       produce them at all). This also means frame-ancestors, sandbox and
+       report-uri below are inert by spec in a meta tag -- kept out of the
+       policy string entirely rather than left in looking like they work.
+       What a meta CSP CAN still do here: block an injected/compromised
+       <script src> from a third-party host, block inline <script>
+       execution, and cap which hosts fetch()/XHR/media are allowed to
+       reach -- real value for a site with no server, just not the full
+       header-based policy. See the Phase 18 session log for the full
+       GitHub Pages header-support audit. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://github.com; font-src 'self'; connect-src 'self'; media-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
 
   <!-- WEB-PHASE-4 REDO Phase 12 (perf): kicks off the 3D environment's one
        big download (environment.glb) the moment the HTML head is parsed, in
