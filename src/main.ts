@@ -20,16 +20,15 @@ import { addRoadEndCaps, type RoadEndCapDef } from './scene/roadEndCaps'
 import { initOverlay, requestOpenOverlay, isOverlayOpen } from './overlay'
 import { initAchievements, registerVisit, hasVisited, notifyOverlayClosed } from './vehicle/achievements'
 import { initDeterrence } from './security/deterrence'
-import { applyDevModeStateReset, initDevModeToggle } from './security/devMode'
+import { initOwnerBypassToggle, isOwnerBypassOn } from './security/ownerBypass'
 
-// WEB-PHASE-4 REDO Phase 18: run before anything else on the page --
-// particularly before achievements.ts (imported above) ever reads a
-// `wf13:visited:*` key, so Developer Mode's reset is never a frame too
-// late. Both are click/keystroke listeners only; neither touches
-// vehicle physics, road/collision logic, or checkpoint placement.
-initDeterrence()
-initDevModeToggle()
-applyDevModeStateReset()
+// WEB-PHASE-4 REDO Phase 19: run before anything else on the page. Both are
+// click/keystroke listeners only; neither touches vehicle physics,
+// road/collision logic, or checkpoint placement. Deterrence is skipped
+// entirely when the owner has switched it off for this browser (Ctrl+Alt+
+// Shift+D, see ownerBypass.ts) -- every other visitor always gets it.
+initOwnerBypassToggle()
+if (!isOwnerBypassOn()) initDeterrence()
 
 const loadingEl = document.getElementById('loading')!
 const loadingFill = document.getElementById('loading-fill')!
