@@ -6,7 +6,12 @@ import type { InputState } from './controls'
 const MAX_ENGINE_FORCE = 3200
 const MAX_BRAKE_FORCE = 60
 const MAX_STEER = 0.55
-const STEER_LERP = 6.0
+// WEB-PHASE-4 REDO Phase 16: slightly reduced left/right steer sensitivity --
+// how fast steerAngle ramps toward targetSteer each frame in applyControls()
+// below (both into a turn and back to center). 6.0 -> 5.0 only; MAX_STEER
+// (the actual lock angle) is untouched, so this just softens how twitchy a
+// tap of A/D feels, it doesn't change how sharp the car can ultimately turn.
+const STEER_LERP = 5.0
 
 // WEB-PHASE-2/3F: one physics-step's worth of computed visual target
 // transforms (chassis root + all 4 wheels, in WORLD space). Two of these are

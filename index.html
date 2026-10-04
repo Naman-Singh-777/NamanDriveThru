@@ -267,14 +267,21 @@
       letter-spacing: 0.22em; text-transform: uppercase;
       color: rgba(255, 255, 255, 0.7);
     }
-    .checkpoint-overlay__github-badge {
-      flex-shrink: 0;
-      width: 26px; height: 26px; border-radius: 50%;
-      border: 1px solid rgba(255, 255, 255, 0.25);
-      overflow: hidden; display: none;
+    /* WEB-PHASE-4 REDO Phase 16: swapped with the GitHub avatar badge below
+       (now in the "Projects" heading) -- the globe/site-link badge lives in
+       the title row instead, still Port-only via .is-port. Extra
+       margin-right keeps it clear of the body's scrollbar column beneath. */
+    .checkpoint-overlay__site-badge {
+      flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%;
+      display: none; align-items: center; justify-content: center;
+      color: rgba(255, 255, 255, 0.55);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      margin-right: 8px;
+      transition: color 0.15s ease, border-color 0.15s ease;
     }
-    .checkpoint-overlay__title-row.is-port .checkpoint-overlay__github-badge { display: block; }
-    .checkpoint-overlay__github-badge img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .checkpoint-overlay__title-row.is-port .checkpoint-overlay__site-badge { display: flex; }
+    .checkpoint-overlay__site-badge:hover { color: #9cc4ff; border-color: rgba(156, 196, 255, 0.5); }
+    .checkpoint-overlay__site-badge svg { width: 16px; height: 16px; }
     .checkpoint-overlay__body { overflow-y: auto; flex: 1; }
     .checkpoint-overlay__empty { color: rgba(255, 255, 255, 0.55); font-size: 14px; margin: 8px 0; }
     .checkpoint-overlay__menu, .checkpoint-overlay__social { list-style: none; margin: 0; padding: 0; }
@@ -315,15 +322,17 @@
     .checkpoint-overlay__section-heading--with-badge {
       display: flex; align-items: center; justify-content: space-between;
     }
-    .checkpoint-overlay__site-badge {
-      flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      color: rgba(255, 255, 255, 0.55);
-      border: 1px solid rgba(255, 255, 255, 0.22);
-      transition: color 0.15s ease, border-color 0.15s ease;
+    /* WEB-PHASE-4 REDO Phase 16: swapped with the globe/site badge above
+       (now in the title row) -- the GitHub avatar lives here instead, sized
+       up slightly (26px -> 30px) now that it has the row to itself, with
+       extra margin-right to clear the body's own scrollbar column. */
+    .checkpoint-overlay__github-badge {
+      flex-shrink: 0;
+      width: 30px; height: 30px; border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      overflow: hidden; margin-right: 8px;
     }
-    .checkpoint-overlay__site-badge:hover { color: #9cc4ff; border-color: rgba(156, 196, 255, 0.5); }
-    .checkpoint-overlay__site-badge svg { width: 16px; height: 16px; }
+    .checkpoint-overlay__github-badge img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
     /* WEB-PHASE-4 REDO Phase 6: Platform's "menu of albums/playlists" grid.
        WEB-PHASE-4 REDO Phase 11: cover art now comes from the cover image
@@ -621,9 +630,7 @@
       <button id="checkpoint-overlay-close" aria-label="Close" type="button">&times;</button>
       <div id="checkpoint-overlay-title-row" class="checkpoint-overlay__title-row">
         <h2 id="checkpoint-overlay-title" class="checkpoint-overlay__title"></h2>
-        <a id="checkpoint-overlay-github" class="checkpoint-overlay__github-badge" target="_blank" rel="noopener noreferrer" aria-label="GitHub profile">
-          <img id="checkpoint-overlay-github-avatar" alt="" />
-        </a>
+        <a id="checkpoint-overlay-site" class="checkpoint-overlay__site-badge" target="_blank" rel="noopener noreferrer" aria-label="Open this portfolio website"></a>
       </div>
       <div id="checkpoint-overlay-body" class="checkpoint-overlay__body"></div>
     </div>

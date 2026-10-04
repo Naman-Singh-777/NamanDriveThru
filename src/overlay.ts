@@ -196,14 +196,18 @@ async function fetchPortProjects(username: string): Promise<{ name: string; desc
 // served from -- same value as index.html's own <link rel="canonical">.
 const SITE_URL = 'https://naman-singh-777.github.io/Portfolio-Websiteeeee/'
 
-// "Projects" heading with a small clickable site-icon pinned to its far
-// right (links out to the live portfolio site itself) -- shared by every
-// renderPort() branch below so all four stay in sync.
+// "Projects" heading with a small clickable GitHub avatar pinned to its far
+// right (swapped down from the title row -- see initOverlay below) --
+// shared by every renderPort() branch below so all four stay in sync. Only
+// ever rendered while a GitHub username is configured (every caller already
+// checked that before calling this), so the avatar is unconditional here.
 function projectsHeadingHtml(): string {
+  const ghUser = externalLinks.githubUsername.trim()
+  const ghUrl = externalLinks.social.github || `https://github.com/${ghUser}`
   return `
     <h3 class="checkpoint-overlay__section-heading checkpoint-overlay__section-heading--with-badge">
       Projects
-      <a class="checkpoint-overlay__site-badge" href="${SITE_URL}" target="_blank" rel="noopener noreferrer" aria-label="Open this portfolio website">${icon('globe')}</a>
+      <a class="checkpoint-overlay__github-badge" href="${ghUrl}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(ghUser)} on GitHub"><img src="https://github.com/${ghUser}.png?size=64" alt="" /></a>
     </h3>`
 }
 
@@ -563,19 +567,15 @@ export function initOverlay(onClose: (closedId: CheckpointId) => void): void {
   appEl = document.getElementById('app')!
   onCloseCb = onClose
 
-  // WEB-PHASE-4 REDO Phase 13: GitHub avatar badge inline at the far right
-  // of the title row, shown only while Port is open (titleRowEl.is-port,
-  // toggled in openOverlay/closeOverlay above). Static -- the same
-  // githubUsername Port's project list already reads from -- so it's wired
-  // once here rather than re-rendered per open.
-  const githubBadge = document.getElementById('checkpoint-overlay-github') as HTMLAnchorElement
-  const githubAvatar = document.getElementById('checkpoint-overlay-github-avatar') as HTMLImageElement
-  const ghUser = externalLinks.githubUsername.trim()
-  if (ghUser) {
-    githubBadge.href = externalLinks.social.github || `https://github.com/${ghUser}`
-    githubAvatar.src = `https://github.com/${ghUser}.png?size=64`
-    githubAvatar.alt = `${ghUser} on GitHub`
-  }
+  // WEB-PHASE-4 REDO Phase 16: globe/site-link badge inline at the far
+  // right of the title row (swapped with the GitHub avatar, which now lives
+  // in the "Projects" heading -- see projectsHeadingHtml above), shown only
+  // while Port is open (titleRowEl.is-port, toggled in openOverlay/
+  // closeOverlay above). Static -- wired once here rather than re-rendered
+  // per open.
+  const siteBadge = document.getElementById('checkpoint-overlay-site') as HTMLAnchorElement
+  siteBadge.href = SITE_URL
+  siteBadge.innerHTML = icon('globe')
 
   closeBtn.addEventListener('click', requestCloseOverlay)
   overlayEl.addEventListener('click', (e) => {

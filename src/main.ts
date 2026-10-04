@@ -396,8 +396,19 @@ async function main(): Promise<void> {
   // keyboard+mouse visitors. cp.active already gates real-world visibility
   // (checkpoint.ts hides the prompt via display:none otherwise), so this is
   // just the extra activation entry point, not a new proximity check.
+  // WEB-PHASE-4 REDO Phase 16: listens on 'pointerdown', not 'pointerup' --
+  // checkpoint.ts repositions this prompt's transform EVERY frame to track
+  // the car's own moving screen projection (it's chasing a moving target,
+  // not a fixed button), so while the car is still drifting through the
+  // activation radius the prompt can visibly shift between the finger
+  // touching down and lifting back up. 'pointerup' hit-tests wherever the
+  // prompt (or whatever's now under the finger) is AT RELEASE, which can
+  // miss by then -- exactly the "tap it a few times before it opens" bug.
+  // 'pointerdown' hit-tests at the instant of contact, when the prompt is
+  // guaranteed to be exactly where it was just rendered, so it never gets a
+  // chance to slide out from under the finger first.
   for (const cp of checkpoints) {
-    cp.promptEl.addEventListener('pointerup', (e) => {
+    cp.promptEl.addEventListener('pointerdown', (e) => {
       e.preventDefault()
       if (cp.active) activateCheckpoint(cp)
     })
