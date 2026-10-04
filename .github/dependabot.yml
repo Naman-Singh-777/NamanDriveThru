@@ -1,0 +1,15 @@
+# WEB-PHASE-4 REDO Phase 19: automated dependency-update PRs (not just
+# alerts) for npm packages and the deploy workflow's GitHub Actions, so a
+# disclosed vulnerability in three/rapier3d/vite/etc. or an Action gets a PR
+# opened automatically instead of silently going stale. Free on public repos.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

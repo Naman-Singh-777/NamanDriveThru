@@ -7,34 +7,44 @@ import { playAchievementChime } from './checkpointAudio'
 // prompt tap -- see activateCheckpoint() in main.ts, the single call site
 // every activation path already converges on). After that first visit, the
 // matching keyboard shortcut (M/G/C) -- or, on touch devices with no
-// keyboard, a small on-screen shortcut chip -- stays permanently available
-// (tracked in localStorage, so it survives reloads) to reopen that
-// checkpoint's menu from anywhere on the map, through the exact same
+// keyboard, a small on-screen shortcut chip -- stays available to reopen
+// that checkpoint's menu from anywhere on the map, through the exact same
 // requestOpenOverlay() light-speed animation every other entry point uses.
 // DOM/CSS skeleton lives in index.html (same convention as touch-controls
 // and the checkpoint overlay); this module only wires behaviour.
+//
+// WEB-PHASE-4 REDO Phase 19: switched from localStorage to sessionStorage.
+// Every visitor now gets the achievement toasts, key popups and chip
+// reveals fresh every time they open the site (new tab, refresh, or after
+// closing the browser) -- sessionStorage clears automatically when the tab
+// closes, so there is nothing to manually reset and no separate Developer
+// Mode needed any more (that feature has been removed outright, see
+// src/security/ownerBypass.ts for what replaced its other half). Within one
+// sitting, behaviour is unchanged: visiting a checkpoint twice in the same
+// session still only fires the toast/popup once, and M/G/C still reopen
+// freely for the rest of that session.
 
 const STORAGE_PREFIX = 'wf13:visited:'
 
 export function hasVisited(id: CheckpointId): boolean {
   try {
-    return localStorage.getItem(STORAGE_PREFIX + id) === '1'
+    return sessionStorage.getItem(STORAGE_PREFIX + id) === '1'
   } catch {
     return false
   }
 }
 
-// Returns true only the first time this is ever called for a given id (the
-// localStorage write "sticks" across reloads) -- false on every later call,
-// including every call this same session after the first.
+// Returns true only the first time this is ever called for a given id
+// *this session* (the sessionStorage write "sticks" only until the tab
+// closes) -- false on every later call within the same session.
 function markVisited(id: CheckpointId): boolean {
   if (hasVisited(id)) return false
   try {
-    localStorage.setItem(STORAGE_PREFIX + id, '1')
+    sessionStorage.setItem(STORAGE_PREFIX + id, '1')
   } catch {
-    // localStorage unavailable (private mode, etc.) -- harmless: the
-    // achievement/popup just replay next time instead of staying one-shot,
-    // and the touch chip won't persist across a reload either.
+    // sessionStorage unavailable (private mode, etc.) -- harmless: the
+    // achievement/popup just replay next time instead of staying one-shot
+    // for the rest of the session.
   }
   return true
 }
