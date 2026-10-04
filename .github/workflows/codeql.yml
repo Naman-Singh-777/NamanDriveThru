@@ -1,0 +1,32 @@
+# WEB-PHASE-4 REDO Phase 19: free GitHub-native static analysis (CodeQL) for
+# the TypeScript/JavaScript source, catching real code-level security bugs
+# (injection, unsafe regex, prototype pollution, etc.) on every push/PR and
+# on a weekly schedule -- separate from and in addition to npm audit, which
+# only checks dependency CVEs, not this codebase's own code.
+name: "CodeQL"
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '17 3 * * 1'
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      matrix:
+        language: ['javascript-typescript']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
