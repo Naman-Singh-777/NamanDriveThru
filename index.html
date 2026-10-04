@@ -472,41 +472,45 @@
     }
     #lightspeed-overlay.is-active { opacity: 1; }
 
-    /* WEB-PHASE-4 REDO Phase 13: Steam-style "Achievement Unlocked" toast,
+    /* WEB-PHASE-4 REDO Phase 17: Steam-style "Achievement Unlocked" toast,
        fired once per checkpoint on its genuine first visit (see
        registerVisit() in src/vehicle/achievements.ts, called from
        activateCheckpoint() in main.ts). z-index above both the checkpoint
        overlay and the light-speed canvas so it's never hidden behind either
-       while the unlock happens. */
+       while the unlock happens. Sized and proportioned like the real Steam
+       overlay notification (~320x70, a 56px icon tile left of a 3-line
+       label/title/subtitle stack) and slides in from the right screen edge
+       the same way Steam's does, rather than fading up from below. */
     #achievement-toast {
       position: fixed; right: 18px; bottom: 18px; z-index: 70;
-      display: none; align-items: center; gap: 12px;
+      display: none; align-items: center; gap: 14px;
+      width: min(320px, calc(100vw - 36px));
+      min-height: 70px; box-sizing: border-box;
       background: linear-gradient(165deg, #1b2534, #0d1420);
       border: 1px solid rgba(255, 196, 77, 0.45);
-      border-radius: 10px;
-      padding: 12px 18px 12px 14px;
-      max-width: min(320px, calc(100vw - 36px));
+      border-radius: 8px;
+      padding: 12px 18px 12px 12px;
       color: #e8edf5;
       font-family: system-ui, sans-serif;
       box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
-      transform: translateY(16px) scale(0.97);
-      opacity: 0;
+      transform: translateX(calc(100% + 36px));
       pointer-events: none;
-      transition: transform 0.3s cubic-bezier(.2,.8,.2,1), opacity 0.3s ease;
+      transition: transform 0.4s cubic-bezier(.175,.885,.32,1.275);
     }
-    #achievement-toast.is-visible { transform: translateY(0) scale(1); opacity: 1; }
+    #achievement-toast.is-visible { transform: translateX(0); }
     .achievement-toast__icon {
-      flex-shrink: 0; width: 34px; height: 34px; border-radius: 7px;
+      flex-shrink: 0; width: 56px; height: 56px; border-radius: 10px;
       background: linear-gradient(160deg, #ffd977, #c98a1f);
       display: flex; align-items: center; justify-content: center;
-      font-size: 18px;
+      font-size: 28px;
+      box-shadow: 0 0 14px rgba(255, 196, 77, 0.35);
     }
     .achievement-toast__label {
       font-size: 10px; font-weight: 700; letter-spacing: 0.14em;
       text-transform: uppercase; color: #ffc44d; margin: 0 0 3px;
     }
     .achievement-toast__title { font-size: 14px; font-weight: 700; margin: 0 0 2px; line-height: 1.25; }
-    .achievement-toast__subtitle { font-size: 12px; color: rgba(255, 255, 255, 0.6); margin: 0; line-height: 1.3; }
+    .achievement-toast__subtitle { font-size: 12px; color: #b8b6b4; margin: 0; line-height: 1.3; }
 
     /* Separate, shorter-lived popup explaining the key just unlocked --
        always exactly 3s on screen per spec, top-center so it never overlaps

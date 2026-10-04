@@ -114,6 +114,42 @@ export function playProximityCue(): void {
   })
 }
 
+// WEB-PHASE-4 REDO Phase 17: a small, cute "achievement unlocked" jingle --
+// a bright 3-note bell figure (sine + a touch of triangle for sparkle) that
+// bounces up then lands a fifth above where it started, plus a quick high
+// "sparkle" grace note on top. Distinct from playActivationChime() (which
+// plays on every checkpoint entry) -- this one only plays once per
+// checkpoint, the moment its achievement toast appears.
+export function playAchievementChime(): void {
+  const c = getCtx()
+  const t0 = c.currentTime
+  const master = c.createGain()
+  master.gain.value = 0.13
+  master.connect(sfxMaster!)
+
+  // The bouncy little "ta-da" -- up a fourth, up a minor third, a tiny
+  // flourish on top (bright triangle wave, not sine, for extra sparkle).
+  const notes: { freq: number; start: number; dur: number; type: OscillatorType }[] = [
+    { freq: 784, start: 0, dur: 0.16, type: 'sine' }, // G5
+    { freq: 1046, start: 0.09, dur: 0.18, type: 'sine' }, // C6
+    { freq: 1568, start: 0.2, dur: 0.3, type: 'triangle' } // G6 sparkle, lands and lingers
+  ]
+  notes.forEach(({ freq, start, dur, type }) => {
+    const t = t0 + start
+    const osc = c.createOscillator()
+    osc.type = type
+    osc.frequency.value = freq
+    const g = c.createGain()
+    g.gain.setValueAtTime(0, t)
+    g.gain.linearRampToValueAtTime(1, t + 0.012)
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur)
+    osc.connect(g)
+    g.connect(master)
+    osc.start(t)
+    osc.stop(t + dur + 0.02)
+  })
+}
+
 // Clean short ascending 4-note chime -- the "data sync complete" activation
 // cue. Sine tones, quick attack/decay, restrained overall volume.
 export function playActivationChime(): void {

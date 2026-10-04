@@ -1,4 +1,5 @@
 import type { CheckpointId } from './checkpoint'
+import { playAchievementChime } from './checkpointAudio'
 
 // WEB-PHASE-4 REDO Phase 13: Steam-style "Achievement Unlocked" toast + a
 // short key-unlock popup, fired exactly once per checkpoint the very first
@@ -51,20 +52,20 @@ interface ShortcutMeta {
 const META: Record<CheckpointId, ShortcutMeta> = {
   platform: {
     chipId: 'shortcut-chip-platform',
-    achievementTitle: 'Judging My Music Taste',
-    achievementSubtitle: 'You found the playlists. Be nice about it.',
+    achievementTitle: 'Caught You Snooping',
+    achievementSubtitle: 'You found the music. Of course you want more now.',
     keyPopupText: 'Press M anytime to jump back into Music.'
   },
   port: {
     chipId: 'shortcut-chip-port',
-    achievementTitle: 'Stalking the Commit History',
-    achievementSubtitle: "Reading my code like it's gossip now, huh?",
+    achievementTitle: 'Now You Want The Code Too',
+    achievementSubtitle: "One repo in and you're already hooked.",
     keyPopupText: 'Press G anytime to reopen Projects.'
   },
   city: {
     chipId: 'shortcut-chip-city',
-    achievementTitle: 'Added to Close Friends (Hopefully)',
-    achievementSubtitle: 'Found the socials. No turning back now.',
+    achievementTitle: "Okay, You're Fully Invested",
+    achievementSubtitle: 'Found my socials. No quitting now.',
     keyPopupText: 'Press C anytime to reopen Connect.'
   }
 }
@@ -164,17 +165,18 @@ export function registerVisit(id: CheckpointId): void {
   if (!markVisited(id)) return
   revealChip(id)
   showToast(META[id])
+  playAchievementChime()
   pendingKeyPopup = id
 }
 
 // Called from main.ts's overlay-close callback with whichever checkpoint
-// just closed. Only fires (2s later, per spec) when that close belongs to a
+// just closed. Only fires (1s later, per spec) when that close belongs to a
 // first-ever visit still owed its key-unlock popup -- a no-op on every
 // ordinary close after that.
 export function notifyOverlayClosed(id: CheckpointId): void {
   if (pendingKeyPopup !== id) return
   pendingKeyPopup = null
-  window.setTimeout(() => showKeyPopup(META[id]), 2000)
+  window.setTimeout(() => showKeyPopup(META[id]), 1000)
 }
 
 // onActivate: the same (id) => activateCheckpoint(...) callback main.ts
