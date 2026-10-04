@@ -135,23 +135,27 @@ function renderMessage(msg: string): string {
   return `<p class="checkpoint-overlay__empty">${escapeHtml(msg)}</p>`
 }
 
-// GitHub's public REST API has no unauthenticated "pinned repos" endpoint —
+// GitHub's public REST API has no unauthenticated "pinned repos" endpoint --
 // pinned items are GraphQL-only, and GraphQL requires a token this static
 // client-side site must never embed (see externalLinks.ts). We used the
 // no-auth, read-only community endpoint https://gh-pinned-repos.egoist.dev
 // (the same approach most "GitHub pinned repos" profile widgets use), but
-// WEB-PHASE-4 REDO Phase 9 confirmed that endpoint is now dead (404 on every
-// request, including its bare root — not a rate limit, not CORS, the service
-// itself is gone). Per the explicit new priority ("GITHUB LINKS SHOULD BE
-// ACCESSIBLE AT ALL TIMES"), Port now tries that endpoint first (in case it
-// or a future live source ever returns something), and falls back to the
-// snapshot below — the user's actual pinned repos as read directly off their
-// public GitHub profile page on 2026-10-03 — rather than an honest-but-
-// useless error message. This is NOT the Phase-6 "recently pushed" fallback
-// the user asked removed (that showed unrelated, non-pinned repos); this is
-// a cached copy of the real pinned list itself, used only when the live
-// fetch can't be reached. Update this array by hand if the pinned repos on
-// github.com/Naman-Singh-777 ever change.
+// WEB-PHASE-4 REDO Phase 9 confirmed that endpoint is dead (it 404'd on
+// every request back then) and WEB-PHASE-4 REDO Phase 18 confirmed it is
+// STILL dead, now failing one step earlier with a CORS rejection instead of
+// a 404 (the service itself is simply gone, not a rate limit or a config
+// issue on our side -- a dead, unreachable third party has nothing to do
+// with this site's own security). Calling fetch() against a confirmed-dead
+// host only produced a scary-looking (but harmless and already-caught)
+// console error on every Port visit for no benefit, so Phase 18 removed the
+// live attempt entirely. Port now renders the snapshot below directly --
+// the user's actual pinned repos as read directly off their public GitHub
+// profile page on 2026-10-03 -- which is NOT the Phase-6 "recently pushed"
+// fallback the user asked removed (that showed unrelated, non-pinned
+// repos); this is a cached copy of the real pinned list itself. Update this
+// array by hand if the pinned repos on github.com/Naman-Singh-777 ever
+// change, or restore a live fetch() call in fetchPortProjects() below if a
+// working replacement endpoint is ever found.
 const PINNED_REPOS_FALLBACK: { name: string; description: string; href: string }[] = [
   { name: 'SmartStack', description: 'A system that reduces AI operational costs by 40-50% through query routing and resource optimization.', href: 'https://github.com/Naman-Singh-777/SmartStack' },
   { name: 'WhereAbouts_SE', description: 'Full-stack college event management platform (Next.js + Supabase) for student event discovery and registration.', href: 'https://github.com/Naman-Singh-777/WhereAbouts_SE' },
@@ -159,37 +163,10 @@ const PINNED_REPOS_FALLBACK: { name: string; description: string; href: string }
   { name: 'Portfolio-Websiteeeee', description: 'This portfolio website.', href: 'https://github.com/Naman-Singh-777/Portfolio-Websiteeeee' }
 ]
 
-async function fetchPortProjects(username: string): Promise<{ name: string; description: string; href: string }[]> {
-  try {
-    const res = await fetch(`https://gh-pinned-repos.egoist.dev/?username=${encodeURIComponent(username)}`)
-    if (!res.ok) throw new Error(`pinned endpoint ${res.status}`)
-    const pinned = (await res.json()) as { repo: string; owner: string; description: string | null }[]
-    if (!Array.isArray(pinned) || pinned.length === 0) throw new Error('empty/malformed pinned list')
-
-    return await Promise.all(
-      pinned.map(async (p) => {
-        const owner = p.owner || username
-        let href = `https://github.com/${owner}/${p.repo}`
-        let description = p.description || ''
-        try {
-          const detail = await fetch(`https://api.github.com/repos/${owner}/${p.repo}`)
-          if (detail.ok) {
-            const d = (await detail.json()) as { homepage?: string | null; html_url: string; description?: string | null }
-            if (d.homepage && d.homepage.trim()) href = d.homepage.trim()
-            else href = d.html_url
-            description = description || d.description || ''
-          }
-        } catch {
-          // homepage lookup failed — keep the plain repo link already set above
-        }
-        return { name: p.repo, description, href }
-      })
-    )
-  } catch {
-    // Live source unreachable/empty — fall back to the real pinned-repo
-    // snapshot above so Port's GitHub links are never just an error message.
-    return PINNED_REPOS_FALLBACK
-  }
+async function fetchPortProjects(_username: string): Promise<{ name: string; description: string; href: string }[]> {
+  // Confirmed dead (see comment above) -- served directly from the
+  // hand-maintained snapshot, no network round-trip, no console noise.
+  return PINNED_REPOS_FALLBACK
 }
 
 // WEB-PHASE-4 REDO Phase 14: the live GitHub Pages URL this very site is
