@@ -47,7 +47,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
   # Optional second target: AWS S3 (static website hosting), matching the
   # "AWS S3" skill on the resume. Stays dormant until AWS_ACCESS_KEY_ID /
