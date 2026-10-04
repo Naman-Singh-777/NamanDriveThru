@@ -169,10 +169,6 @@ async function fetchPortProjects(_username: string): Promise<{ name: string; des
   return PINNED_REPOS_FALLBACK
 }
 
-// WEB-PHASE-4 REDO Phase 14: the live GitHub Pages URL this very site is
-// served from -- same value as index.html's own <link rel="canonical">.
-const SITE_URL = 'https://naman-singh-777.github.io/Portfolio-Websiteeeee/'
-
 // "Projects" heading with a small clickable GitHub avatar pinned to its far
 // right (swapped down from the title row -- see initOverlay below) --
 // shared by every renderPort() branch below so all four stay in sync. Only
@@ -544,17 +540,7 @@ export function initOverlay(onClose: (closedId: CheckpointId) => void): void {
   appEl = document.getElementById('app')!
   onCloseCb = onClose
 
-  // WEB-PHASE-4 REDO Phase 16: globe/site-link badge inline at the far
-  // right of the title row (swapped with the GitHub avatar, which now lives
-  // in the "Projects" heading -- see projectsHeadingHtml above), shown only
-  // while Port is open (titleRowEl.is-port, toggled in openOverlay/
-  // closeOverlay above). Static -- wired once here rather than re-rendered
-  // per open.
-  const siteBadge = document.getElementById('checkpoint-overlay-site') as HTMLAnchorElement
-  siteBadge.href = SITE_URL
-  siteBadge.innerHTML = icon('globe')
-
-  closeBtn.addEventListener('click', requestCloseOverlay)
+ closeBtn.addEventListener('click', requestCloseOverlay)
   overlayEl.addEventListener('click', (e) => {
     if (e.target === overlayEl) requestCloseOverlay() // backdrop click, not the panel itself
   })

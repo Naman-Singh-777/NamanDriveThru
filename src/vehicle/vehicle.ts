@@ -192,6 +192,10 @@ export class Vehicle {
       .setLinearDamping(0.3)
       .setAngularDamping(2.0)
       .enabledRotations(false, true, false)
+      // Never sleep: Rapier puts an idle dynamic body to sleep after ~2s, and a
+      // sleeping chassis ignores forward drive until something else wakes it
+      // (reversing did) -- the car looked stuck at spawn and after every menu.
+      .setCanSleep(false)
     this.body = world.createRigidBody(bodyDesc)
 
     const colliderDesc = RAPIER.ColliderDesc.cuboid(chassisHalfExtents.x, chassisHalfExtents.y, chassisHalfExtents.z)
