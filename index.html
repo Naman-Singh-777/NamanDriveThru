@@ -23,7 +23,7 @@
        reach -- real value for a site with no server, just not the full
        header-based policy. See the Phase 18 session log for the full
        GitHub Pages header-support audit. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://github.com; font-src 'self'; connect-src 'self'; media-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://github.com https://avatars.githubusercontent.com; font-src 'self'; connect-src 'self'; media-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
   <meta name="referrer" content="strict-origin-when-cross-origin" />
 
   <!-- WEB-PHASE-4 REDO Phase 12 (perf): kicks off the 3D environment's one
@@ -285,22 +285,7 @@
       letter-spacing: 0.22em; text-transform: uppercase;
       color: rgba(255, 255, 255, 0.7);
     }
-    /* WEB-PHASE-4 REDO Phase 16: swapped with the GitHub avatar badge below
-       (now in the "Projects" heading) -- the globe/site-link badge lives in
-       the title row instead, still Port-only via .is-port. Extra
-       margin-right keeps it clear of the body's scrollbar column beneath. */
-    .checkpoint-overlay__site-badge {
-      flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%;
-      display: none; align-items: center; justify-content: center;
-      color: rgba(255, 255, 255, 0.55);
-      border: 1px solid rgba(255, 255, 255, 0.22);
-      margin-right: 8px;
-      transition: color 0.15s ease, border-color 0.15s ease;
-    }
-    .checkpoint-overlay__title-row.is-port .checkpoint-overlay__site-badge { display: flex; }
-    .checkpoint-overlay__site-badge:hover { color: #9cc4ff; border-color: rgba(156, 196, 255, 0.5); }
-    .checkpoint-overlay__site-badge svg { width: 16px; height: 16px; }
-    .checkpoint-overlay__body { overflow-y: auto; flex: 1; }
+        .checkpoint-overlay__body { overflow-y: auto; flex: 1; }
     .checkpoint-overlay__empty { color: rgba(255, 255, 255, 0.55); font-size: 14px; margin: 8px 0; }
     .checkpoint-overlay__menu, .checkpoint-overlay__social { list-style: none; margin: 0; padding: 0; }
     .checkpoint-overlay__menu li, .checkpoint-overlay__social li {
@@ -652,7 +637,6 @@
       <button id="checkpoint-overlay-close" aria-label="Close" type="button">&times;</button>
       <div id="checkpoint-overlay-title-row" class="checkpoint-overlay__title-row">
         <h2 id="checkpoint-overlay-title" class="checkpoint-overlay__title"></h2>
-        <a id="checkpoint-overlay-site" class="checkpoint-overlay__site-badge" target="_blank" rel="noopener noreferrer" aria-label="Open this portfolio website"></a>
       </div>
       <div id="checkpoint-overlay-body" class="checkpoint-overlay__body"></div>
     </div>
