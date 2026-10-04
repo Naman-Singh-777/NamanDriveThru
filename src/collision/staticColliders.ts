@@ -10,7 +10,7 @@ import RAPIER from '@dimforge/rapier3d-compat'
 // Rapier (the cost that matters is dynamic trimesh, which this isn't).
 
 const VEHICLE_RE = /^vehicle_/i
-const RAILING_RE = /(railing|cityrail_(toprail|lowrail|balusters|post))/i
+const RAILING_RE = /(railing|portrail_(?!lamp)|cityrail_(toprail|lowrail|balusters|post))/i
 const DRIVABLE_RE = /^(road_|intersection|openplatform_pad|port_dock|port_structure|port_quayextension|port_quaypilings|roaddetail_strip)/i
 const BLOCKING_RE = /(cliff|terrain|bedrockshelf|rock_master|terraindetail|city_building|city_tower|city_industrial_mass|citydetail_|port_crane|cargo_ship|ship_|container_group|portdetail_barrier|portdetail_bollard|portdetail_containerextra|portdetail_fueltank|portdetail_utilitybox|roaddetail_barrier|platformdetail_pylon|platform_fascia|platform_canopy|platform_pillar|platform_monument|streetlight|ocean)/i
 // WEB-PHASE-4 REDO Phase 12: mirrors WALL_RESTITUTION in roadBoundaries.ts --

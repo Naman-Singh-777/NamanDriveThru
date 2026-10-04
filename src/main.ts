@@ -14,6 +14,7 @@ import { DiagnosticCamera } from './vehicle/diagnosticCamera'
 import { SideDiagnosticCamera } from './vehicle/sideDiagnosticCamera'
 import { HeroCamera } from './vehicle/heroCamera'
 import { OverviewCamera } from './vehicle/overviewCamera'
+import { OverviewLabels } from './vehicle/overviewLabels'
 import { createCheckpoints, updateCheckpoints, triggerActivation, type Checkpoint, type CheckpointDef, type CheckpointId } from './vehicle/checkpoint'
 import { playActivationChime } from './vehicle/checkpointAudio'
 import { addRoadEndCaps, type RoadEndCapDef } from './scene/roadEndCaps'
@@ -315,6 +316,32 @@ async function main(): Promise<void> {
   // is completely unchanged.
   let preOverviewMode: CamMode = 'normal'
 
+  // Overview fly-in/out: instead of cutting, the camera travels a curved path
+  // (quadratic Bezier that pulls up and out first, then glides over the map)
+  // between whichever mode was active and the fixed top-down overview pose,
+  // with orientation slerped along the same eased progress. Both end poses are
+  // recomputed live each frame, so the path always lands exactly on the real
+  // chase/overview framing. Camera-only: physics, colliders and the map are
+  // not involved. Labels are DOM-only and faded in near the end of the flight.
+  const overviewLabels = new OverviewLabels(checkpointDefs)
+  const FLY_DURATION = 2.6
+  let fly: { t: number; dir: 1 | -1 } | null = null
+  const easeInOut = (x: number): number => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2)
+  const flyAP = new THREE.Vector3()
+  const flyBP = new THREE.Vector3()
+  const flyCP = new THREE.Vector3()
+  const flyAQ = new THREE.Quaternion()
+  const flyBQ = new THREE.Quaternion()
+  function updateCamMode(mode: CamMode, dt: number): void {
+    if (mode === 'front') diagnosticCam.update(vehicle, dt)
+    else if (mode === 'left') leftCam.update(vehicle, dt)
+    else if (mode === 'right') rightCam.update(vehicle, dt)
+    else if (mode === 'left1') l1Cam.update(vehicle, dt)
+    else if (mode === 'right1') r1Cam.update(vehicle, dt)
+    else if (mode === 'overview') overviewCam.update(vehicle, dt)
+    else chaseCam.update(vehicle, cameraObstacles, dt)
+  }
+
   // WEB-PHASE-4 REDO Phase 6: additive camera-shake state for checkpoint
   // activation "visual juice". Applied once per frame in the render loop
   // below, strictly after every existing camera-mode update -- it only ever
@@ -379,12 +406,16 @@ async function main(): Promise<void> {
     else if (e.code === 'KeyL') next = camMode === 'left' ? 'normal' : 'left'
     else if (e.code === 'KeyR') next = camMode === 'right' ? 'normal' : 'right'
     else if (e.code === 'KeyO') {
-      if (camMode === 'overview') next = preOverviewMode
-      else {
+      if (camMode === 'overview') {
+        next = preOverviewMode
+        fly = { t: fly ? fly.t : 1, dir: -1 }
+      } else {
         preOverviewMode = camMode
         next = 'overview'
+        fly = { t: fly ? fly.t : 0, dir: 1 }
       }
     } else return
+    if (e.code !== 'KeyO') fly = null // any other camera key cancels an in-flight transition
     if (next === camMode) return
     camMode = next
     // re-anchor whichever camera is being switched TO, so it doesn't lerp across
@@ -486,20 +517,28 @@ async function main(): Promise<void> {
     // everything it does, is unchanged.
     vehicle.applyVisualState(accumulator / FIXED_DT)
 
-    if (camMode === 'front') {
-      diagnosticCam.update(vehicle, frameDt)
-    } else if (camMode === 'left') {
-      leftCam.update(vehicle, frameDt)
-    } else if (camMode === 'right') {
-      rightCam.update(vehicle, frameDt)
-    } else if (camMode === 'left1') {
-      l1Cam.update(vehicle, frameDt)
-    } else if (camMode === 'right1') {
-      r1Cam.update(vehicle, frameDt)
-    } else if (camMode === 'overview') {
+    if (fly) {
+      // pose A: the non-overview mode (kept live); pose B: the overview frame
+      updateCamMode(camMode === 'overview' ? preOverviewMode : camMode, frameDt)
+      flyAP.copy(camera.position)
+      flyAQ.copy(camera.quaternion)
       overviewCam.update(vehicle, frameDt)
+      flyBP.copy(camera.position)
+      flyBQ.copy(camera.quaternion)
+      fly.t = Math.min(1, Math.max(0, fly.t + (fly.dir * frameDt) / FLY_DURATION))
+      const e = easeInOut(fly.t)
+      // control point: partway toward B horizontally but already most of the way up
+      flyCP.set(flyAP.x + (flyBP.x - flyAP.x) * 0.3, flyAP.y + (flyBP.y - flyAP.y) * 0.75, flyAP.z + (flyBP.z - flyAP.z) * 0.3)
+      const u = 1 - e
+      camera.position.set(
+        u * u * flyAP.x + 2 * u * e * flyCP.x + e * e * flyBP.x,
+        u * u * flyAP.y + 2 * u * e * flyCP.y + e * e * flyBP.y,
+        u * u * flyAP.z + 2 * u * e * flyCP.z + e * e * flyBP.z
+      )
+      camera.quaternion.slerpQuaternions(flyAQ, flyBQ, e)
+      if ((fly.dir === 1 && fly.t >= 1) || (fly.dir === -1 && fly.t <= 0)) fly = null
     } else {
-      chaseCam.update(vehicle, cameraObstacles, frameDt)
+      updateCamMode(camMode, frameDt)
     }
     // WEB-PHASE-4 REDO Phase 6: additive post-camera shake -- runs after
     // every camMode branch above has already written camera.position for
@@ -520,6 +559,11 @@ async function main(): Promise<void> {
     // shader keeps running even while the overlay is open), but the floating
     // "OPEN <Enter>" DOM prompt is suppressed while the overlay has focus.
     activeCheckpoint = updateCheckpoints(checkpoints, vehicle, camera, clock.elapsedTime, frameDt)
+    {
+      const prog = fly ? easeInOut(fly.t) : camMode === 'overview' ? 1 : 0
+      const a = Math.min(1, Math.max(0, (prog - 0.7) / 0.3))
+      overviewLabels.update(camera, isOverlayOpen() ? 0 : a)
+    }
     if (isOverlayOpen()) {
       for (const cp of checkpoints) cp.promptEl.style.display = 'none'
     }
