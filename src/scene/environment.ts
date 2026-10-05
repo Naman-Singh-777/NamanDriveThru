@@ -161,6 +161,14 @@ export function loadEnvironment(
         })
         for (const b of strayBarriers) b.parent?.remove(b)
 
+        // Port: the road-side street lamp StreetLight_Road_West_0 stands inside the
+        // Container_Group_02 cargo stack (bounding boxes overlap). Removed from the render
+        // graph at load, same non-destructive pattern as above. staticColliders.ts builds
+        // its colliders from this graph afterwards, so the lamp's collider goes with it
+        // instead of leaving an invisible post. The locked GLB is never written to.
+        const cargoLamp = root.getObjectByName('StreetLight_Road_West_0')
+        if (cargoLamp) cargoLamp.parent?.remove(cargoLamp)
+
         // Port edge railings: restore the missing sections and re-seat the four corner
         // lamps (see portRailFix.ts). Runs after the light strip above so the lamp
         // lights are already gone and only the lamp meshes move.
