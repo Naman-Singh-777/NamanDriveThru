@@ -1,0 +1,280 @@
+/* Loading screen + tutorial.
+   Layout: #loading is a 75% / 25% grid. Left = the Wizard + shapes + campfire scene
+   with the loading bar (which becomes SKIP TUTORIAL / START once the world has
+   fully loaded). Right = the sequential tutorial. The Wizard and campfire CSS
+   themselves live in wizard.css / campfire.css (supplied animations, scoped). */
+
+@font-face {
+  font-family: 'Poppins'; font-weight: 900; font-style: italic; font-display: swap;
+  src: url('/assets/fonts/poppins-latin-900-italic.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Source Code Pro'; font-weight: 200; font-style: normal; font-display: swap;
+  src: url('/assets/fonts/source-code-pro-latin-200-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Source Code Pro'; font-weight: 900; font-style: normal; font-display: swap;
+  src: url('/assets/fonts/source-code-pro-latin-900-normal.woff2') format('woff2');
+}
+
+#loading {
+  position: fixed; inset: 0; z-index: 10;
+  display: grid; grid-template-columns: minmax(0, 3fr) minmax(250px, 1fr);
+  background: #001326; color: #dbe7ff;
+  font-family: system-ui, sans-serif;
+  overflow: hidden;
+  transition: opacity 0.7s ease;
+}
+#loading.is-leaving { opacity: 0; pointer-events: none; }
+
+/* ---------- LEFT 75%: the scene ---------- */
+#loading .ld-stage {
+  position: relative; min-width: 0; min-height: 0; --k: 1;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: clamp(8px, 2vh, 24px); padding: 12px; overflow: hidden;
+}
+/* Everything in the scene is laid out on a fixed 640 x 480 design grid and scaled
+   by --k (set from JS to fit the space), so the Wizard / shapes / fire keep their
+   exact relationship at any screen size. Each scaled piece is its own transform;
+   the light layers are plain boxes sized with calc(var(--k) * px) so they can blend
+   with whatever is painted under them (the navy background, the wizard, the shapes). */
+#loading .ld-scene-box { position: relative; flex: none; width: calc(640px * var(--k)); height: calc(480px * var(--k)); }
+#loading .scene { display: flex; }
+#loading .ld-wizard-wrap {
+  position: absolute; left: 0; top: 0; z-index: 2; transform-origin: 0 0;
+  transform: translate(calc(var(--k) * 125px), calc(var(--k) * 150px)) scale(var(--k));
+}
+#loading .ld-fire-wrap {
+  position: absolute; left: 0; top: 0; z-index: 1; width: 600px; height: 600px; transform-origin: 0 0;
+  transform: translate(calc(var(--k) * 67px), calc(var(--k) * 194px)) scale(calc(var(--k) * 0.42));
+}
+#loading .ld-fire-wrap .campfire { transform: none; transform-origin: 0 0; }
+
+/* Fire light: a wide warm bloom on the ground (screen) and a tighter warm tint that
+   falls on the Wizard and the shapes (soft-light). Both flicker out of step. */
+#loading .ld-glow, #loading .ld-firelight { position: absolute; border-radius: 50%; pointer-events: none; }
+#loading .ld-glow {
+  z-index: 0; left: calc(var(--k) * -150px); top: calc(var(--k) * 30px);
+  width: calc(var(--k) * 660px); height: calc(var(--k) * 660px);
+  background: radial-gradient(circle, rgba(255, 128, 38, 0.34) 0%, rgba(255, 96, 24, 0.16) 30%, rgba(255, 80, 20, 0.05) 52%, transparent 70%);
+  mix-blend-mode: screen; animation: ld-flicker 3.1s ease-in-out infinite;
+}
+#loading .ld-firelight {
+  z-index: 3; left: calc(var(--k) * -80px); top: calc(var(--k) * 100px);
+  width: calc(var(--k) * 520px); height: calc(var(--k) * 520px);
+  background: radial-gradient(circle, rgba(255, 170, 70, 0.8) 0%, rgba(255, 120, 40, 0.36) 38%, transparent 68%);
+  mix-blend-mode: soft-light; animation: ld-flicker 2.3s ease-in-out infinite reverse;
+}
+@keyframes ld-flicker {
+  0%   { opacity: 0.86; transform: scale(1); }
+  12%  { opacity: 1;    transform: scale(1.025); }
+  27%  { opacity: 0.8;  transform: scale(0.985); }
+  41%  { opacity: 0.97; transform: scale(1.015); }
+  58%  { opacity: 0.84; transform: scale(0.995); }
+  73%  { opacity: 1;    transform: scale(1.03); }
+  88%  { opacity: 0.88; transform: scale(1); }
+  100% { opacity: 0.86; transform: scale(1); }
+}
+
+/* ---------- loading bar / buttons (replace each other) ---------- */
+#loading .ld-action { flex: none; min-height: 84px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+#loading .ld-progress { width: min(360px, 62vw); text-align: center; font: 600 12px/1 system-ui, sans-serif; letter-spacing: 0.2em; text-transform: uppercase; color: #9ab3f5; }
+#loading .ld-progress .bar { margin-top: 10px; height: 6px; background: rgba(154, 179, 245, 0.16); border-radius: 3px; overflow: hidden; }
+#loading .ld-progress .fill { height: 100%; width: 0%; background: linear-gradient(90deg, #3f64ce, #9ab3f5); transition: width 0.15s ease; }
+#loading .ld-progress[hidden], #loading #ld-skip[hidden], #loading .ld-next[hidden] { display: none; }
+
+/* SKIP TUTORIAL / START: the supplied "flush" button, selectors scoped to #ld-skip. */
+#loading #ld-skip {
+  --text-color: hsla(210, 50%, 85%, 1);
+  --shadow-color: hsla(210, 40%, 52%, 0.4);
+  --btn-color: hsl(210, 80%, 42%);
+  --bg-color: #001326;
+  position: relative; padding: 10px 20px; border: none; background: none; cursor: pointer;
+  font-family: "Source Code Pro", monospace; font-weight: 900; text-transform: uppercase;
+  font-size: clamp(18px, 2.1vw, 30px); color: var(--text-color);
+  background-color: var(--btn-color); box-shadow: var(--shadow-color) 2px 2px 22px;
+  border-radius: 4px; z-index: 0; overflow: hidden;
+  animation: ld-pop-in 0.5s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+#loading #ld-skip:focus { outline-color: transparent; box-shadow: var(--btn-color) 2px 2px 22px; }
+#loading #ld-skip:focus-visible { outline: 2px solid #fbc638; outline-offset: 3px; }
+#loading #ld-skip .right::after, #loading #ld-skip::after {
+  content: var(--content); display: block; position: absolute; white-space: nowrap; padding: 40px 40px; pointer-events: none;
+}
+#loading #ld-skip::after { font-weight: 200; top: -30px; left: -20px; }
+#loading #ld-skip .right, #loading #ld-skip .left { position: absolute; width: 100%; height: 100%; top: 0; }
+#loading #ld-skip .right { left: 66%; }
+#loading #ld-skip .left { right: 66%; }
+#loading #ld-skip .right::after {
+  top: -30px; left: calc(-66% - 20px);
+  background-color: var(--bg-color); color: transparent;
+  transition: transform 0.4s ease-out; transform: translate(0, -90%) rotate(0deg);
+}
+#loading #ld-skip:hover .right::after { transform: translate(0, -47%) rotate(0deg); }
+#loading #ld-skip .right:hover::after { transform: translate(0, -50%) rotate(-7deg); }
+#loading #ld-skip .left:hover ~ .right::after { transform: translate(0, -50%) rotate(7deg); }
+#loading #ld-skip::before {
+  content: ''; pointer-events: none; opacity: 0.6;
+  background:
+    radial-gradient(circle at 20% 35%, transparent 0, transparent 2px, var(--text-color) 3px, var(--text-color) 4px, transparent 4px),
+    radial-gradient(circle at 75% 44%, transparent 0, transparent 2px, var(--text-color) 3px, var(--text-color) 4px, transparent 4px),
+    radial-gradient(circle at 46% 52%, transparent 0, transparent 4px, var(--text-color) 5px, var(--text-color) 6px, transparent 6px);
+  width: 100%; height: 300%; top: 0; left: 0; position: absolute;
+  animation: ld-bubbles 5s linear infinite both;
+}
+@keyframes ld-bubbles { from { transform: translate(); } to { transform: translate(0, -66.666%); } }
+@keyframes ld-pop-in { from { opacity: 0; transform: translateY(10px) scale(0.9); } to { opacity: 1; transform: none; } }
+
+/* pressed: it squeezes, the bubbles race, then it is spent */
+#loading #ld-skip.is-spitting { animation: ld-squeeze 0.5s ease both; pointer-events: none; }
+#loading #ld-skip.is-spitting::before { animation-duration: 0.7s; }
+@keyframes ld-squeeze { 0% { transform: scale(1); } 25% { transform: scale(0.9, 0.8); } 60% { transform: scale(1.06, 1.1); } 100% { transform: scale(1); } }
+#loading #ld-skip.is-spent { opacity: 0; transform: translateY(10px) scale(0.92); transition: opacity 0.45s ease, transform 0.45s ease; pointer-events: none; animation: none; }
+
+/* water + steam particles (created by tutorial.ts) */
+.ld-drop {
+  position: fixed; left: 0; top: 0; width: 10px; height: 14px; z-index: 30; pointer-events: none; will-change: transform, opacity;
+  border-radius: 50% 50% 55% 55% / 60% 60% 40% 40%;
+  background: radial-gradient(circle at 35% 30%, #d6edff, #4aa3ff 55%, #1f6fd1);
+  box-shadow: 0 0 6px rgba(120, 190, 255, 0.7);
+}
+.ld-puff {
+  position: fixed; left: 0; top: 0; width: 64px; height: 64px; z-index: 29; pointer-events: none; border-radius: 50%; opacity: 0; filter: blur(5px);
+  background: radial-gradient(circle, rgba(205, 228, 255, 0.5), rgba(205, 228, 255, 0) 70%); will-change: transform, opacity;
+}
+
+/* fire going out: the supplied flame animation keeps running underneath, each flame is
+   just squashed to nothing with the independent `scale` property (inner flames first),
+   the sparks fade, the logs dim. */
+#loading.is-dousing .flame { scale: 1 0; opacity: 0; transition: scale 0.95s cubic-bezier(0.5, 0, 0.85, 0.35), opacity 0.95s ease-in; }
+#loading.is-dousing .fire__white .flame  { transition-delay: 0s; }
+#loading.is-dousing .fire__yellow .flame { transition-delay: 0.12s; }
+#loading.is-dousing .fire__orange .flame { transition-delay: 0.24s; }
+#loading.is-dousing .fire__red .flame    { transition-delay: 0.36s; }
+#loading .sparks { transition: opacity 0.35s ease; }
+#loading.is-dousing .sparks { opacity: 0; }
+#loading .log, #loading .stick { transition: filter 1.6s ease; }
+#loading.is-dousing .log, #loading.is-dousing .stick { filter: brightness(0.55) saturate(0.75); }
+
+/* ---------- RIGHT 25%: the tutorial ---------- */
+#loading .ld-panel {
+  position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column;
+  padding: clamp(14px, 2.4vh, 26px) clamp(14px, 1.6vw, 26px);
+  background: linear-gradient(180deg, #00192f 0%, #001326 75%);
+  border-left: 1px solid rgba(154, 179, 245, 0.16);
+  box-shadow: inset 16px 0 44px -30px rgba(255, 140, 50, 0.4);
+}
+#loading .ld-panel__top { flex: none; display: flex; align-items: center; justify-content: space-between; font: 700 13px/1 var(--font-heading); letter-spacing: 0.28em; text-transform: uppercase; color: #7f95c7; }
+#loading .ld-dots { display: flex; gap: 6px; }
+#loading .ld-dots span { width: 8px; height: 8px; border-radius: 50%; background: #26405f; transition: background 0.3s, box-shadow 0.3s; }
+#loading .ld-dots span.on { background: #ffc44d; box-shadow: 0 0 9px rgba(255, 196, 77, 0.65); }
+#loading .ld-steps { position: relative; flex: 1; min-height: 0; margin-top: 14px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #26405f transparent; -webkit-overflow-scrolling: touch; }
+#loading .ld-step { display: none; flex-direction: column; gap: 12px; padding-bottom: 6px; }
+#loading .ld-step.is-active { display: flex; animation: ld-step-in 0.35s ease both; }
+@keyframes ld-step-in { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+#loading .ld-kicker { font: 700 12px/1 var(--font-heading); letter-spacing: 0.26em; text-transform: uppercase; color: #ffc44d; margin: 0; }
+#loading .ld-title { font: 800 clamp(28px, 4vh, 38px)/0.95 var(--font-heading); letter-spacing: 0.04em; text-transform: uppercase; color: #fff; margin: 0; }
+#loading .ld-demo {
+  flex: none; height: var(--dh, 126px); display: flex; align-items: center; justify-content: center; overflow: hidden;
+  border-radius: 10px; border: 1px solid rgba(154, 179, 245, 0.16);
+  background: radial-gradient(ellipse at 50% 110%, rgba(154, 179, 245, 0.16), transparent 70%), rgba(5, 22, 42, 0.8);
+}
+#loading .ld-maze { transform: scale(var(--ms1, 2.2)); }
+#loading .ld-maze2 { transform: scale(var(--ms2, 1.4)); }
+/* supplied "maze runner" loaders */
+#loading .ld-maze {
+  width: 40px; aspect-ratio: 1;
+  background: radial-gradient(farthest-side, #000 90%, #0000) 50%/8px 8px no-repeat, conic-gradient(from -90deg at 15px 15px, #0000 90deg, #fff 0) 0 0/25px 25px;
+  animation: ld-l8 1.5s infinite;
+}
+@keyframes ld-l8 {
+  0% { background-position: left -10px top 50%, 0 0; }
+  50% { background-position: right -10px top 50%, 0 0; }
+  50.01% { background-position: right 50% top -10px, 0 0; }
+  100% { background-position: right 50% bottom -10px, 0 0; }
+}
+#loading .ld-maze2 {
+  width: 70px; aspect-ratio: 1;
+  background:
+    radial-gradient(farthest-side, #000 90%, #0000) 0 0/8px 8px no-repeat,
+    conic-gradient(from -90deg at 30px 30px, #0000 90deg, #fff 0) 0 0/40px 40px,
+    conic-gradient(from 90deg at 10px 10px, #0000 90deg, #fff 0) 0 0/40px 40px no-repeat,
+    conic-gradient(from -90deg at 30px 30px, #0000 90deg, #fff 0) 100% 100%/40px 40px no-repeat;
+  animation: ld-l5 2s infinite;
+}
+@keyframes ld-l5 {
+  0% { background-position: left 1px top 1px, 0 0, 0 0, 100% 100%; }
+  16.67% { background-position: left 50% top 1px, 0 0, 0 0, 100% 100%; }
+  33.33% { background-position: left 50% bottom 1px, 0 0, 0 0, 100% 100%; }
+  50% { background-position: right 1px bottom 1px, 0 0, 0 0, 100% 100%; }
+  66.67% { background-position: right 1px bottom 50%, 0 0, 0 0, 100% 100%; }
+  83.33% { background-position: left 1px bottom 50%, 0 0, 0 0, 100% 100%; }
+  100% { background-position: left 1px top 1px, 0 0, 0 0, 100% 100%; }
+}
+
+/* key caps + rows */
+#loading .ld-rows { display: flex; flex-direction: column; gap: 10px; }
+#loading .ld-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; line-height: 1.3; color: #c9d8f5; }
+#loading .ld-row b { color: #fff; font-weight: 700; }
+#loading .ld-keys { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+#loading .ld-key {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 30px; height: 30px; padding: 0 7px; box-sizing: border-box;
+  border-radius: 7px; border: 1px solid rgba(154, 179, 245, 0.38); border-bottom-width: 3px;
+  background: linear-gradient(#1d3555, #10233d); font: 700 13px/1 system-ui, sans-serif; color: #e6efff;
+  animation: ld-keyhit 3.2s ease-in-out infinite; animation-delay: calc(var(--i, 0) * 0.35s);
+}
+#loading .ld-key--wide { min-width: 78px; }
+@keyframes ld-keyhit { 0%, 18%, 100% { transform: none; background: linear-gradient(#1d3555, #10233d); } 6% { transform: translateY(2px); background: linear-gradient(#ffd977, #c98a1f); color: #1b1200; } }
+#loading .ld-note { font-size: 12.5px; line-height: 1.4; color: #9fb4de; margin: 0; }
+#loading .ld-note b, #loading .ld-text b { color: #fff; }
+#loading .ld-text { font-size: 13.5px; line-height: 1.45; color: #c9d8f5; margin: 0; }
+#loading .ld-callout { margin: 0; padding: 9px 11px; border-radius: 8px; font-size: 13px; line-height: 1.4; color: #fff; background: rgba(255, 196, 77, 0.1); border: 1px solid rgba(255, 196, 77, 0.38); }
+
+/* the three places */
+#loading .ld-place { margin: 0; padding: 1px 0 1px 11px; border-left: 3px solid var(--c, #9ab3f5); }
+#loading .ld-place h3 { margin: 0 0 3px; font: 800 22px/1 var(--font-heading); letter-spacing: 0.08em; text-transform: uppercase; color: var(--c, #9ab3f5); }
+#loading .ld-place p { margin: 0; font-size: 12.5px; line-height: 1.4; color: #c9d8f5; }
+#loading .ld-place p + p { margin-top: 3px; }
+#loading .ld-place .go { color: #fff; font-weight: 700; }
+
+#loading .ld-panel__foot { flex: none; min-height: 58px; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; padding-top: 12px; }
+#loading .ld-foot-note { margin: 0; font-size: 12.5px; line-height: 1.35; color: #9fb4de; }
+#loading .ld-foot-note.is-ready { color: #89beb3; }
+
+/* NEXT: the supplied button, em-scaled so it fits the 25% panel. */
+#loading .ld-next {
+  display: inline-flex; align-self: flex-start; padding: 0.25em 1.125em; font-family: 'Poppins', sans-serif; font-style: italic; font-weight: 900;
+  font-size: clamp(20px, 2.1vw, 30px); line-height: 1.4; color: #fff; background: #6225e6; border: 0; cursor: pointer;
+  transition: 1s; box-shadow: 0.15em 0.15em 0 #000; transform: skewX(-15deg);
+}
+#loading .ld-next:focus { outline: none; }
+#loading .ld-next:focus-visible { outline: 2px solid #fbc638; outline-offset: 4px; }
+#loading .ld-next:hover { transition: 0.5s; box-shadow: 0.25em 0.25em 0 #fbc638; }
+#loading .ld-next span { transform: skewX(15deg); }
+#loading .ld-next span:nth-child(2) { width: 0.5em; margin-left: 0.75em; position: relative; top: 12%; transition: 0.5s; margin-right: 0; }
+#loading .ld-next:hover span:nth-child(2) { transition: 0.5s; margin-right: 1.125em; }
+#loading .ld-next svg { width: 1.65em; height: 1.075em; overflow: visible; }
+#loading .ld-next path.one { transition: 0.4s; transform: translateX(-60%); }
+#loading .ld-next path.two { transition: 0.5s; transform: translateX(-30%); }
+#loading .ld-next:hover path.three { animation: ld-color-anim 1s infinite 0.2s; }
+#loading .ld-next:hover path.one { transform: translateX(0%); animation: ld-color-anim 1s infinite 0.6s; }
+#loading .ld-next:hover path.two { transform: translateX(0%); animation: ld-color-anim 1s infinite 0.4s; }
+@keyframes ld-color-anim { 0% { fill: white; } 50% { fill: #fbc638; } 100% { fill: white; } }
+
+/* device-specific copy */
+#loading:not(.is-touch) .only-touch { display: none !important; }
+#loading.is-touch .only-desktop { display: none !important; }
+
+/* ---------- smaller screens ---------- */
+@media (max-height: 520px) {
+  #loading .ld-title { font-size: 26px; }
+  #loading .ld-text, #loading .ld-row, #loading .ld-place p { font-size: 12px; }
+  #loading .ld-action { min-height: 60px; }
+}
+@media (max-width: 700px) and (max-aspect-ratio: 4/5) {
+  #loading { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 42fr) minmax(0, 58fr); }
+  #loading .ld-panel { border-left: 0; border-top: 1px solid rgba(154, 179, 245, 0.16); box-shadow: inset 0 16px 44px -30px rgba(255, 140, 50, 0.4); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #loading .ld-glow, #loading .ld-firelight, #loading .ld-key { animation: none; }
+}
