@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { NOISE_GLSL, sceneTime } from './glslCommon'
-import { SWELL_GLSL } from './swell'
+import { SWELL_GLSL, SWELL_N, SWELL_GEO_N, GUST_N } from './swell'
 import { SHORE_GLSL, type ShoreSim } from './shoreSim'
 
 // Ocean water for the baked Ocean_Near mesh.
@@ -30,6 +30,7 @@ ${NOISE_GLSL}
 uniform float uTime;
 varying vec3 vOcPos;
 varying float vOcFoam;
+varying float vOcGust;
 
 const float OC_LAM[9] = float[9](60.0, 36.0, 21.0, 12.5, 7.4, 4.4, 2.6, 1.55, 0.9);
 const float OC_ANG[9] = float[9](0.0, 0.20, -0.25, 0.38, -0.42, 0.15, -0.18, 0.50, -0.55);
@@ -49,7 +50,7 @@ void oc_waves(vec2 p0, float fp, out vec2 grad, out float crest, out float lost)
   lost = 0.0;
   // A real sea is not a stack of perfect plane waves. Warp the phase and let each wave's height
   // and heading drift with slow noise, otherwise the surface reads as regular stripes.
-  vec2 warp = (vec2(bn_vnoise(vec3(p0 * 0.045, 3.1)), bn_vnoise(vec3(p0 * 0.045, 9.7))) - 0.5) * 1.5;
+  vec2 warp = (vec2(bn_vnoise(vec3(p0 * 0.03, 3.1 + uTime * 0.05)), bn_vnoise(vec3(p0 * 0.03, 9.7 + uTime * 0.05))) - 0.5) * 6.0;
   vec2 p = p0 + warp;
   vec3 nz = vec3(bn_vnoise(vec3(p0 * 0.021, 1.7)), bn_vnoise(vec3(p0 * 0.047, 5.3)), bn_vnoise(vec3(p0 * 0.11, 8.9)));
   for (int i = 0; i < 9; i++) {
@@ -58,7 +59,7 @@ void oc_waves(vec2 p0, float fp, out vec2 grad, out float crest, out float lost)
     float w = sqrt(9.81 * k);
     float pick = i % 3 == 0 ? nz.x : (i % 3 == 1 ? nz.y : nz.z);
     float am = 0.6 + 0.8 * fract(pick * (1.0 + 0.37 * float(i)) + 0.21 * float(i));
-    float a = OC_WIND + OC_ANG[i] + (pick - 0.5) * 0.3;
+    float a = OC_WIND + OC_ANG[i] + (pick - 0.5) * 0.7;
     vec2 dir = vec2(cos(a), sin(a));
     float vis = clamp((lam / max(fp, 1e-4) - 5.0) / 10.0, 0.0, 1.0);   // gone below 5 px, full above 15 px
     float th = k * dot(dir, p) - w * uTime + OC_PHI[i];
@@ -91,7 +92,7 @@ vec2 oc_ripples(vec2 p, float fp) {
 }
 `
 
-export function applyOceanMaterial(mesh: THREE.Mesh, envMap: THREE.Texture | null, shore: ShoreSim | null = null): void {
+export function applyOceanMaterial(mesh: THREE.Mesh, envMap: THREE.Texture | null, shore: ShoreSim | null = null, gusts: THREE.Vector4[] = []): void {
   const old = mesh.material as THREE.MeshStandardMaterial
   const mat = new THREE.MeshPhysicalMaterial({
     name: old.name || 'MAT_WATER',
@@ -108,15 +109,38 @@ export function applyOceanMaterial(mesh: THREE.Mesh, envMap: THREE.Texture | nul
   // envMapIntensity when it has its own envMap, so it is set explicitly here.)
   mat.envMap = envMap
   mat.envMapIntensity = 0.35
-  mat.customProgramCacheKey = () => (shore ? 'MAT_WATER_OCEAN_V2_SHORE' : 'MAT_WATER_OCEAN_V2')
+  mat.customProgramCacheKey = () => (shore ? 'MAT_WATER_OCEAN_V3_SHORE' : 'MAT_WATER_OCEAN_V3')
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = sceneTime
+    shader.uniforms.uGust = {
+      value: gusts.length === GUST_N ? gusts : Array.from({ length: GUST_N }, () => new THREE.Vector4(1e6, 1e6, 0, 0.05))
+    }
     if (shore) Object.assign(shader.uniforms, shore.uniforms)
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec4 color_1;\nvarying vec3 vOcPos;\nvarying float vOcFoam;')
+      .replace(
+        '#include <common>',
+        `#include <common>
+attribute vec4 color_1;
+varying vec3 vOcPos;
+varying float vOcFoam;
+varying float vOcGust;
+uniform float uTime;
+${SWELL_GLSL}`
+      )
       .replace(
         '#include <begin_vertex>',
-        '#include <begin_vertex>\nvOcPos = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvOcFoam = color_1.r;'
+        `#include <begin_vertex>
+{
+  // the long swell lifts and drops the water itself; the shorter waves are painted in the fragment shader
+  vec2 ocW = (modelMatrix * vec4(transformed, 1.0)).xz;
+  float ocG = sw_gust(ocW, uTime);
+  float ocH; vec2 ocS;
+  sw_eval(ocW, uTime, ocG, 0, ${SWELL_GEO_N}, ocH, ocS);
+  transformed.y += ocH;
+  vOcGust = ocG;
+}
+vOcPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+vOcFoam = color_1.r;`
       )
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>\n${SWELL_GLSL}\n${shore ? SHORE_GLSL : ''}\n${OCEAN_GLSL}`)
@@ -131,16 +155,22 @@ export function applyOceanMaterial(mesh: THREE.Mesh, envMap: THREE.Texture | nul
         // Long swell: seven deep-water waves that drift in and out of step (swell.ts). Their slope
         // tilts the whole surface, so big moving bands of moon glint roll toward the rocks.
         float swH; vec2 swG;
-        sw_eval(ocP, uTime, swH, swG);
-        ocGrad += swG * 1.8;
-        float swN = clamp(swH / 1.3, -1.0, 1.0);        // whitecaps: baked foam channel x crest x a slow breakup noise, thinner with distance
+        float swGust = vOcGust;
+        sw_eval(ocP, uTime, swGust, 0, ${SWELL_N}, swH, swG);
+        ocGrad += swG * 2.3;
+        float swN = clamp(swH / 3.4, -1.0, 1.0);        // whitecaps: baked foam channel x crest x a slow breakup noise, thinner with distance
         float ocFoam = smoothstep(0.55, 0.85, vOcFoam) * smoothstep(0.55, 0.9, ocCrest) * (1.0 - smoothstep(30.0, 160.0, ocFp * 900.0));
         if (ocFoam > 0.002) ocFoam *= smoothstep(0.38, 0.7, bn_fbm(vec3(ocP * 0.45, uTime * 0.07), 3, 0.6));
         // Foam rides the highest swell crests, in broken patches that drift with the wave group.
         // Calm stretches between groups stay clean.
-        float swBreak = smoothstep(0.72, 1.0, swN) * smoothstep(0.5, 0.76, bn_fbm(vec3(ocP * 0.09 + vec2(uTime * 0.9, uTime * -0.6), uTime * 0.05), 3, 0.6));
-        ocFoam = max(ocFoam, swBreak * 0.6);
-        diffuseColor.rgb += vec3(0.003, 0.010, 0.012) * smoothstep(0.2, 1.0, swN); // light through thin crests
+        vec2 swWd = vec2(0.62, -0.78);
+        vec2 swStreak = vec2(dot(ocP, swWd) * 0.22 + uTime * 0.7, dot(ocP, vec2(-swWd.y, swWd.x)) * 0.9);
+        float swBreak = smoothstep(0.64 - 0.08 * swGust, 0.95, swN)
+          * smoothstep(0.5 - 0.1 * swGust, 0.78, bn_fbm(vec3(ocP * 0.09 + vec2(uTime * 0.9, uTime * -0.6), uTime * 0.05), 3, 0.6))
+          * smoothstep(0.42, 0.72, bn_vnoise(vec3(swStreak, uTime * 0.35)))
+          * (1.0 - smoothstep(30.0, 200.0, ocFp * 900.0));
+        ocFoam = max(ocFoam, swBreak * (0.45 + 0.2 * swGust));
+        diffuseColor.rgb += vec3(0.004, 0.014, 0.017) * smoothstep(0.05, 0.9, swN); // light through thin crests
 ${shore ? `
         {
           vec4 shSt; float shD;
