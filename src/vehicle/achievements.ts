@@ -13,39 +13,42 @@ import { playAchievementChime } from './checkpointAudio'
 // DOM/CSS skeleton lives in index.html (same convention as touch-controls
 // and the checkpoint overlay); this module only wires behaviour.
 //
-// WEB-PHASE-4 REDO Phase 19: switched from localStorage to sessionStorage.
-// Every visitor now gets the achievement toasts, key popups and chip
-// reveals fresh every time they open the site (new tab, refresh, or after
-// closing the browser) -- sessionStorage clears automatically when the tab
-// closes, so there is nothing to manually reset and no separate Developer
-// Mode needed any more (that feature has been removed outright, see
-// src/security/ownerBypass.ts for what replaced its other half). Within one
-// sitting, behaviour is unchanged: visiting a checkpoint twice in the same
-// session still only fires the toast/popup once, and M/G/C still reopen
-// freely for the rest of that session.
+// Every entry to the site is a brand-new player: nothing about what a
+// visitor has already unlocked is ever written to localStorage or
+// sessionStorage, it only lives in memory for the current page load. A
+// reload, a new tab or a return visit therefore replays every achievement
+// toast, key-unlock popup and chip reveal from scratch. Within one sitting
+// the behaviour is unchanged: visiting a checkpoint twice still only fires
+// the toast/popup once, and M/G/C keep reopening freely after that.
 
 const STORAGE_PREFIX = 'wf13:visited:'
+const visited = new Set<CheckpointId>()
 
-export function hasVisited(id: CheckpointId): boolean {
-  try {
-    return sessionStorage.getItem(STORAGE_PREFIX + id) === '1'
-  } catch {
-    return false
+// Older builds saved this flag in localStorage, then sessionStorage. Drop any
+// leftover copy so a stale flag can never mark someone as already seen.
+function clearLegacyFlags(): void {
+  for (const store of [() => localStorage, () => sessionStorage]) {
+    try {
+      const s = store()
+      for (let i = s.length - 1; i >= 0; i--) {
+        const k = s.key(i)
+        if (k && k.startsWith(STORAGE_PREFIX)) s.removeItem(k)
+      }
+    } catch {
+      // storage unavailable -- nothing to clear
+    }
   }
 }
 
-// Returns true only the first time this is ever called for a given id
-// *this session* (the sessionStorage write "sticks" only until the tab
-// closes) -- false on every later call within the same session.
+export function hasVisited(id: CheckpointId): boolean {
+  return visited.has(id)
+}
+
+// Returns true only the first time this is called for a given id during this
+// page load, false on every later call.
 function markVisited(id: CheckpointId): boolean {
-  if (hasVisited(id)) return false
-  try {
-    sessionStorage.setItem(STORAGE_PREFIX + id, '1')
-  } catch {
-    // sessionStorage unavailable (private mode, etc.) -- harmless: the
-    // achievement/popup just replay next time instead of staying one-shot
-    // for the rest of the session.
-  }
+  if (visited.has(id)) return false
+  visited.add(id)
   return true
 }
 
@@ -193,6 +196,7 @@ export function notifyOverlayClosed(id: CheckpointId): void {
 // wires to the M/G/C keydown branches -- reused here so tapping an
 // already-unlocked chip on a touch device opens the exact same way.
 export function initAchievements(onActivate: (id: CheckpointId) => void): void {
+  clearLegacyFlags()
   toastEl = document.getElementById('achievement-toast')!
   toastTitleEl = document.getElementById('achievement-toast-title')!
   toastSubEl = document.getElementById('achievement-toast-subtitle')!
@@ -200,9 +204,6 @@ export function initAchievements(onActivate: (id: CheckpointId) => void): void {
   popupTextEl = document.getElementById('key-unlock-popup-text')!
 
   for (const id of Object.keys(META) as CheckpointId[]) {
-    // Returning visitor: reveal whichever chips already unlocked in a
-    // previous session, with no toast/popup replay.
-    if (hasVisited(id)) revealChip(id)
     document.getElementById(META[id].chipId)?.addEventListener('pointerup', (e) => {
       e.preventDefault()
       onActivate(id)
