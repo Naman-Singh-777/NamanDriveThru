@@ -5,6 +5,7 @@ import { createSky, createNightEnvironment } from './scene/sky'
 import { createLighting } from './scene/lighting'
 import { buildStaticColliders, isCameraObstacle } from './collision/staticColliders'
 import { buildRoadBoundaries, buildJunctionBoundaries } from './collision/roadBoundaries'
+import { buildStartRockBoundary } from './collision/startRockBoundary'
 import { Vehicle } from './vehicle/vehicle'
 import { createControls } from './vehicle/controls'
 import { bindTouchControls } from './vehicle/touchControls'
@@ -133,6 +134,10 @@ async function main(): Promise<void> {
   console.log('[road boundaries]', roadBoundaryStats)
   const junctionBoundaryStats = buildJunctionBoundaries(env.root, world)
   console.log('[junction boundaries]', junctionBoundaryStats)
+
+  // Invisible hard boundary along the edges of the rocky headland behind the spawn point, so the
+  // car cannot drive off the ridge into the sea. Additive only (see startRockBoundary.ts).
+  console.log('[start rock boundary walls]', buildStartRockBoundary(world))
 
   const vehicle = new Vehicle(world, env)
   loadingFill.style.width = '95%'
@@ -404,13 +409,19 @@ async function main(): Promise<void> {
     if (e.code === 'KeyM') { activateCheckpointById('platform'); return }
     if (e.code === 'KeyG') { activateCheckpointById('port'); return }
     if (e.code === 'KeyC') { activateCheckpointById('city'); return }
+    handleCamKey(e.code, e.shiftKey)
+  })
+
+  // Camera selection, shared by the keyboard handler above and the phone's on-screen Overview
+  // button (touch devices have no O key). Same code path either way.
+  function handleCamKey(code: string, shift: boolean): void {
     let next: CamMode
-    if (e.code === 'KeyF') next = camMode === 'front' ? 'normal' : 'front'
-    else if (e.code === 'KeyL' && e.shiftKey) next = camMode === 'left1' ? 'normal' : 'left1'
-    else if (e.code === 'KeyR' && e.shiftKey) next = camMode === 'right1' ? 'normal' : 'right1'
-    else if (e.code === 'KeyL') next = camMode === 'left' ? 'normal' : 'left'
-    else if (e.code === 'KeyR') next = camMode === 'right' ? 'normal' : 'right'
-    else if (e.code === 'KeyO') {
+    if (code === 'KeyF') next = camMode === 'front' ? 'normal' : 'front'
+    else if (code === 'KeyL' && shift) next = camMode === 'left1' ? 'normal' : 'left1'
+    else if (code === 'KeyR' && shift) next = camMode === 'right1' ? 'normal' : 'right1'
+    else if (code === 'KeyL') next = camMode === 'left' ? 'normal' : 'left'
+    else if (code === 'KeyR') next = camMode === 'right' ? 'normal' : 'right'
+    else if (code === 'KeyO') {
       if (camMode === 'overview') {
         next = preOverviewMode
         fly = { t: fly ? fly.t : 1, dir: -1 }
@@ -420,9 +431,10 @@ async function main(): Promise<void> {
         fly = { t: fly ? fly.t : 0, dir: 1 }
       }
     } else return
-    if (e.code !== 'KeyO') fly = null // any other camera key cancels an in-flight transition
+    if (code !== 'KeyO') fly = null // any other camera key cancels an in-flight transition
     if (next === camMode) return
     camMode = next
+    document.getElementById('touch-btn-overview')?.classList.toggle('is-on', camMode === 'overview')
     // re-anchor whichever camera is being switched TO, so it doesn't lerp across
     // the map from a stale position -- switching FROM one leaves it alone since it
     // simply won't be updated again until switched back to.
@@ -433,6 +445,9 @@ async function main(): Promise<void> {
     else if (camMode === 'right1') r1Cam.reset()
     else if (camMode === 'overview') overviewCam.reset()
     else chaseCam.reset()
+  }
+  document.getElementById('touch-btn-overview')?.addEventListener('click', () => {
+    if (!isTutorialActive()) handleCamKey('KeyO', false)
   })
 
   // WEB-PHASE-4 REDO Phase 10: touch/phone devices have no Enter key, so the
