@@ -84,7 +84,7 @@ async function main(): Promise<void> {
 
   loadingFill.style.width = '10%'
   const env = await loadEnvironment(scene, (pct) => {
-    loadingFill.style.width = `${10 + pct * 70}%`
+    loadingFill.style.width = `${10 + Math.min(1, pct) * 70}%`
   })
   loadingFill.style.width = '85%'
 

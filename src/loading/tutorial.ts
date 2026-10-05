@@ -263,6 +263,20 @@ function dropShapes(scope: HTMLElement): void {
   })
 }
 
+// The wizard keeps casting while the shapes hover. When the shapes fall his arms and hands come
+// down to his sides again: each part is frozen where it is and eased back to its resting pose.
+function lowerArms(scope: HTMLElement): void {
+  scope.querySelectorAll<HTMLElement>('.right-arm, .left-arm, .right-arm .right-hand, .left-arm .left-hand').forEach((el) => {
+    const now = getComputedStyle(el).transform
+    el.style.animation = 'none'
+    const rest = getComputedStyle(el).transform
+    el.animate(
+      [{ transform: now === 'none' ? rest : now }, { transform: rest }],
+      { duration: 900, delay: 140, easing: 'cubic-bezier(0.45, 0, 0.3, 1)', fill: 'both' },
+    )
+  })
+}
+
 async function launch(): Promise<void> {
   if (!root || launched || !loaded) return
   launched = true
@@ -276,6 +290,7 @@ async function launch(): Promise<void> {
     await sleep(520)
     root.classList.add('is-dousing')
     dropShapes(root)
+    lowerArms(root)
     const glow = root.querySelectorAll<HTMLElement>('.ld-glow, .ld-firelight')
     glow.forEach((g) => g.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 1300, delay: 250, easing: 'ease-in', fill: 'forwards' }))
     await sleep(380)
