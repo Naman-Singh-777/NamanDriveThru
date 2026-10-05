@@ -63,6 +63,15 @@ let orbitRaf: number | null = null
 let currentPlaylistIdx = -1
 let currentTrackIdx = -1
 
+// True while the visitor wants music playing (a track was started, or they
+// pressed play), false once they pause it themselves or the playlist runs
+// out. The element can also be paused by something else (an audio-focus
+// change, the browser suspending the AudioContext, a flaky decoder hiccup);
+// when that happens while this is true, playback is resumed instead of just
+// staying silent.
+let wantPlaying = false
+let autoResumes: number[] = []
+
 type Listener = () => void
 const listeners = new Set<Listener>()
 export function onStateChange(fn: Listener): () => void {
@@ -144,17 +153,30 @@ function ensureEngine(): void {
   // lightspeed transition) was a real, continuous drag once music had been
   // used even once. It now starts on 'play' and stops on 'pause'/'ended', so
   // the common state (paused or never played) costs nothing.
+  // The orbit is a ~50s lap, so the panner only needs a new position about
+  // 20 times a second (the HRTF filter interpolates between updates). Writing
+  // three AudioParams every render frame on top of the heavy driving scene was
+  // needless work for the audio thread.
   let orbitT = 0
+  let orbitLast = performance.now()
   const orbitTick = () => {
-    orbitT += 1 / 60
-    const angle = orbitT * 0.12 // slow drift -- a full lap takes roughly 50s
-    panner!.positionX.value = Math.sin(angle) * 1.6
-    panner!.positionZ.value = Math.cos(angle) * 1.6 - 1
-    panner!.positionY.value = Math.sin(angle * 0.5) * 0.4
+    const now = performance.now()
+    if (now - orbitLast >= 50) {
+      orbitT += (now - orbitLast) / 1000
+      orbitLast = now
+      const angle = orbitT * 0.12 // slow drift -- a full lap takes roughly 50s
+      const t = ctx.currentTime
+      panner!.positionX.setTargetAtTime(Math.sin(angle) * 1.6, t, 0.05)
+      panner!.positionZ.setTargetAtTime(Math.cos(angle) * 1.6 - 1, t, 0.05)
+      panner!.positionY.setTargetAtTime(Math.sin(angle * 0.5) * 0.4, t, 0.05)
+    }
     orbitRaf = requestAnimationFrame(orbitTick)
   }
   const startOrbit = () => {
-    if (orbitRaf === null) orbitTick()
+    if (orbitRaf === null) {
+      orbitLast = performance.now()
+      orbitTick()
+    }
   }
   const stopOrbit = () => {
     if (orbitRaf !== null) {
@@ -175,11 +197,48 @@ function ensureEngine(): void {
     setSfxDucking(false)
     stopOrbit()
     notify()
+    // Paused by something other than the visitor (they never pressed pause, the
+    // track did not just end): pick playback back up. Capped at 3 tries per
+    // 10 seconds so a genuine failure can never turn into a retry loop.
+    if (wantPlaying && audioEl && !audioEl.ended) {
+      const now = performance.now()
+      autoResumes = autoResumes.filter((t) => now - t < 10000)
+      if (autoResumes.length < 3) {
+        autoResumes.push(now)
+        window.setTimeout(() => {
+          if (wantPlaying && audioEl && audioEl.paused && !audioEl.ended) {
+            if (ctx.state !== 'running') void ctx.resume()
+            void audioEl.play().catch(() => {})
+          }
+        }, 250)
+      }
+    }
   })
   audioEl.addEventListener('ended', () => {
     stopOrbit() // playNextInCurrent() restarts it via the next 'play' event if there is a next track
     void playNextInCurrent()
   })
+  // The AudioContext can be suspended behind our back (an audio-device change,
+  // the browser reclaiming it); while music is wanted, bring it straight back.
+  ctx.addEventListener('statechange', () => {
+    if (wantPlaying && ctx.state !== 'running') void ctx.resume()
+  })
+  // OS media keys / the browser's media controls go through the same intent
+  // flag, so a deliberate pause from there is never undone by the resume above.
+  if ('mediaSession' in navigator) {
+    try {
+      navigator.mediaSession.setActionHandler('play', () => {
+        wantPlaying = true
+        void audioEl?.play().catch(() => {})
+      })
+      navigator.mediaSession.setActionHandler('pause', () => {
+        wantPlaying = false
+        audioEl?.pause()
+      })
+    } catch {
+      // action not supported -- the plain handlers above still work
+    }
+  }
   audioEl.addEventListener('timeupdate', notify)
   audioEl.addEventListener('loadedmetadata', notify)
 
@@ -191,6 +250,8 @@ function ensureEngine(): void {
 export async function playTrack(playlist: Playlist, playlistIdx: number, trackIdx: number): Promise<void> {
   ensureEngine()
   const ctx = getSharedAudioContext()
+  wantPlaying = true
+  autoResumes = []
   if (ctx.state === 'suspended') await ctx.resume()
   currentPlaylistIdx = playlistIdx
   currentTrackIdx = trackIdx
@@ -208,8 +269,16 @@ export async function playTrack(playlist: Playlist, playlistIdx: number, trackId
 
 export function togglePlayPause(): void {
   if (!audioEl) return
-  if (audioEl.paused) void audioEl.play()
-  else audioEl.pause()
+  if (audioEl.paused) {
+    wantPlaying = true
+    autoResumes = []
+    const ctx = getSharedAudioContext()
+    if (ctx.state !== 'running') void ctx.resume()
+    void audioEl.play().catch(() => {})
+  } else {
+    wantPlaying = false
+    audioEl.pause()
+  }
 }
 
 export function seekTo(fraction: number): void {
@@ -230,6 +299,7 @@ async function playNextInCurrent(): Promise<void> {
   const playlist = currentManifest.playlists[currentPlaylistIdx]
   const next = currentTrackIdx + 1
   if (next < playlist.tracks.length) await playTrack(playlist, currentPlaylistIdx, next)
+  else wantPlaying = false // end of the playlist: nothing left to resume
 }
 
 export interface PlaybackState {
@@ -264,6 +334,10 @@ export function probeDuration(url: string): Promise<number | null> {
     const cleanup = () => {
       probe.removeEventListener('loadedmetadata', onLoaded)
       probe.removeEventListener('error', onError)
+      // Release the throwaway element and drop its connection so it can never
+      // keep downloading, or hold a media decoder, next to the real player.
+      probe.removeAttribute('src')
+      probe.load()
     }
     const onLoaded = () => {
       const d = isFinite(probe.duration) ? probe.duration : null

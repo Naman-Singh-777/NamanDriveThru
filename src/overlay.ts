@@ -244,7 +244,7 @@ async function renderPort(): Promise<void> {
 // in this file changes. The grid markup/CSS classes below are unchanged
 // from the Spotify-era version on purpose (same "exact same UI" look), just
 // now fed from local data instead of an async Spotify oEmbed fetch.
-async function renderPlatformMenu(): Promise<void> {
+async function renderPlatformMenu(landOnPlaying = false): Promise<void> {
   bodyEl.innerHTML = `<h3 class="checkpoint-overlay__section-heading">Playlists</h3><p class="checkpoint-overlay__empty">Loading playlists&hellip;</p>`
   const manifest = await loadManifest()
   if (openId !== 'platform') return // overlay closed/changed while this was in flight
@@ -252,6 +252,15 @@ async function renderPlatformMenu(): Promise<void> {
   if (playlists.length === 0) {
     bodyEl.innerHTML = renderMessage('No music folders found yet.')
     return
+  }
+  // Opened with the M shortcut while a song is playing: land straight on that
+  // song's playlist. The player's back link still returns to this grid.
+  if (landOnPlaying) {
+    const playing = getPlaybackState().playlistIdx
+    if (playing >= 0 && playing < playlists.length) {
+      showPlatformPlayer(playlists, playing)
+      return
+    }
   }
   bodyEl.innerHTML = `
     <h3 class="checkpoint-overlay__section-heading">Playlists</h3>
@@ -417,8 +426,8 @@ function showPlatformPlayer(playlists: Playlist[], playlistIdx: number): void {
   sync()
 }
 
-function renderPlatform(): void {
-  void renderPlatformMenu()
+function renderPlatform(landOnPlaying: boolean): void {
+  void renderPlatformMenu(landOnPlaying)
 }
 
 // WEB-PHASE-4 REDO Phase 15: an email entry copies the address to the
@@ -480,7 +489,7 @@ function renderCity(): void {
   })
 }
 
-export function openOverlay(id: CheckpointId): void {
+export function openOverlay(id: CheckpointId, opts: { landOnPlaying?: boolean } = {}): void {
   if (openId === id) return
   openId = id
   titleEl.textContent = TITLES[id]
@@ -489,7 +498,7 @@ export function openOverlay(id: CheckpointId): void {
   titleRowEl.classList.toggle('is-port', id === 'port')
 
   if (id === 'port') void renderPort()
-  else if (id === 'platform') renderPlatform()
+  else if (id === 'platform') renderPlatform(!!opts.landOnPlaying)
   else renderCity()
 }
 
@@ -498,15 +507,22 @@ export function openOverlay(id: CheckpointId): void {
 // overlapping two 1s animations or double-firing open/close.
 let transitioning = false
 
+// True from the moment a menu starts opening until it has fully closed. The
+// fullscreen Escape counter uses it so an Escape that belongs to a menu is
+// never counted toward leaving fullscreen.
+export function isOverlayBusy(): boolean {
+  return openId !== null || transitioning
+}
+
 // The real entry point from main.ts's ENTER handler now (replacing a direct
 // openOverlay call): plays the light-speed flash first, and only once it's
 // done does the overlay actually open, with its background inverted for as
 // long as it stays open (both per explicit request).
-export function requestOpenOverlay(id: CheckpointId): void {
+export function requestOpenOverlay(id: CheckpointId, opts: { landOnPlaying?: boolean } = {}): void {
   if (transitioning || openId === id) return
   transitioning = true
   void playLightspeed().then(() => {
-    openOverlay(id)
+    openOverlay(id, opts)
     appEl.classList.add('is-inverted')
     transitioning = false
   })

@@ -23,7 +23,11 @@ let sfxMaster: GainNode | null = null
 
 function getCtx(): AudioContext {
   if (!ctx) {
-    ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
+    // 'playback' asks for a larger output buffer: a few extra milliseconds of
+    // latency on the SFX cues, in exchange for music that does not drop out
+    // when the driving scene is hogging the CPU/GPU.
+    const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+    ctx = new Ctor({ latencyHint: 'playback' })
     sfxMaster = ctx.createGain()
     sfxMaster.gain.value = 1
     sfxMaster.connect(ctx.destination)

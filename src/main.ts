@@ -18,7 +18,8 @@ import { OverviewLabels } from './vehicle/overviewLabels'
 import { createCheckpoints, updateCheckpoints, triggerActivation, type Checkpoint, type CheckpointDef, type CheckpointId } from './vehicle/checkpoint'
 import { playActivationChime } from './vehicle/checkpointAudio'
 import { addRoadEndCaps, type RoadEndCapDef } from './scene/roadEndCaps'
-import { initOverlay, requestOpenOverlay, isOverlayOpen } from './overlay'
+import { initOverlay, requestOpenOverlay, isOverlayOpen, isOverlayBusy } from './overlay'
+import { initFullscreen } from './fullscreen'
 import { initAchievements, registerVisit, hasVisited, notifyOverlayClosed } from './vehicle/achievements'
 import { initDeterrence } from './security/deterrence'
 import { initOwnerBypassToggle, isOwnerBypassOn } from './security/ownerBypass'
@@ -30,6 +31,8 @@ import { initOwnerBypassToggle, isOwnerBypassOn } from './security/ownerBypass'
 // Shift+D, see ownerBypass.ts) -- every other visitor always gets it.
 initOwnerBypassToggle()
 if (!isOwnerBypassOn()) initDeterrence()
+// Fullscreen from the first key press or click, left again with three Escapes.
+initFullscreen(isOverlayBusy)
 
 const loadingEl = document.getElementById('loading')!
 const loadingFill = document.getElementById('loading-fill')!
@@ -361,13 +364,15 @@ async function main(): Promise<void> {
   // jitter applied to camera.position AFTER whichever camera class already
   // wrote it this frame (see the shakeTime block in the render loop), so
   // it's purely additive and self-resets every frame.
-  function activateCheckpoint(cp: Checkpoint): void {
+  function activateCheckpoint(cp: Checkpoint, viaShortcut = false): void {
     if (isOverlayOpen()) return
     triggerActivation(cp, vehicle.position)
     playActivationChime()
     shakeTime = SHAKE_DURATION
     registerVisit(cp.def.id) // one-shot achievement + key-unlock popup, first visit only
-    requestOpenOverlay(cp.def.id) // plays the light-speed flash, then actually opens
+    // The M/G/C shortcut (and its touch chip) lands Music on the playlist that is
+    // already playing; entering the terminal itself opens the playlist grid.
+    requestOpenOverlay(cp.def.id, { landOnPlaying: viaShortcut }) // plays the light-speed flash, then actually opens
   }
 
   // WEB-PHASE-4 REDO Phase 13: once a checkpoint has been visited for real
@@ -378,7 +383,7 @@ async function main(): Promise<void> {
   function activateCheckpointById(id: CheckpointId): void {
     if (!hasVisited(id) || isOverlayOpen()) return
     const cp = checkpoints.find((c) => c.def.id === id)
-    if (cp) activateCheckpoint(cp)
+    if (cp) activateCheckpoint(cp, true)
   }
   initAchievements(activateCheckpointById)
 
