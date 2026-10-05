@@ -2,6 +2,9 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { applyPortRailFix } from './portRailFix'
 import { applyCityRailFix } from './cityRailFix'
+import { applyOceanMaterial } from './ocean'
+import { applyProceduralMaterials } from './proceduralMaterials'
+import { applyBuildingLights } from './buildingLights'
 
 // WEB-FIX-07: MAT_CLIFF/MAT_CLIFF.002 (76 exported meshes -- the dominant terrain
 // material) are procedural Blender node materials, confirmed by read-only inspection
@@ -167,22 +170,15 @@ export function loadEnvironment(
         // post (see cityRailFix.ts). Same load-time, graph-only pattern.
         applyCityRailFix(root)
 
-        // MAT_WATER exported with no base color (Blender's procedural ocean shader
-        // can't be baked to a single glTF value), which left it defaulting to flat
-        // white. Give it the dark coastal-water look described for this scene —
-        // web-only, the Blender material itself is untouched.
+        // MAT_WATER exported with no base colour, so it defaulted to flat white. It is rebuilt as
+        // real ocean water (see ocean.ts): Blender's body colour, IOR 1.333, animated waves,
+        // foam. Material only, the baked ocean mesh itself is untouched.
         root.traverse((obj) => {
           const mesh = obj as THREE.Mesh
-          if (!mesh.isMesh) return
-          const mat = mesh.material as THREE.MeshStandardMaterial
-          if (!mat || Array.isArray(mesh.material)) return
-          if (/ocean|water/i.test(obj.name) || /water/i.test(mat.name ?? '')) {
-            mat.color.setRGB(0.012, 0.028, 0.045)
-            mat.roughness = 0.35
-            mat.metalness = 0.55
-            mat.envMapIntensity = 1.2
-            mat.needsUpdate = true
-          }
+          if (!mesh.isMesh || Array.isArray(mesh.material)) return
+          const mat = mesh.material as THREE.MeshStandardMaterial | undefined
+          if (!mat) return
+          if (/ocean|water/i.test(obj.name) || /water/i.test(mat.name ?? '')) applyOceanMaterial(mesh, scene.environment)
         })
 
         // BodyPaint (the car's main paint shell) exported with only metallicFactor=0
@@ -206,66 +202,9 @@ export function loadEnvironment(
           }
         })
 
-        // Several Blender procedural materials (cliff rock, wet/pillar/quay concrete,
-        // rusted steel, tarnished bronze) exported with literally no base color — only
-        // metallic/roughness survived, if that. They defaulted to glTF's flat white,
-        // which under night lighting reads as the washed-out white/gray terrain and
-        // architecture. These are given plain, materially-appropriate dark colors
-        // (concrete/rock/metal tones, not an invented hue) — everything that DID
-        // export a real color is left completely untouched.
-        const MATERIAL_COLOR_FIX: Record<string, [number, number, number]> = {
-          MAT_CONCRETE: [0.11, 0.11, 0.115],
-          MAT_CONCRETE_PORT_QUAY: [0.1, 0.1, 0.105],
-          // Platform-exclusive materials (verified via GLB node/material usage dump:
-          // no non-platform mesh references any of these four) -- WEB-FIX-05 replaced
-          // the WEB-FIX-03 guesses below with values grounded in real exported data:
-          // MAT_PLATFORM_RUSTED_STEEL now matches MAT_RUSTED_METAL's actual exported
-          // baseColorFactor [0.15,0.09,0.055] (a real, non-platform sibling material
-          // in this GLB, same semantic "rusted metal" role) instead of a separately
-          // invented, brighter/more-orange guess. MAT_PLATFORM_TARNISHED_BRONZE has no
-          // surviving color anywhere in the file for its role -- still a substitute --
-          // darkened and re-hued off gray-beige toward a proper dark warm bronze.
-          MAT_PLATFORM_WET_CONCRETE: [0.085, 0.09, 0.105],
-          MAT_PLATFORM_CONCRETE_PILLAR: [0.12, 0.12, 0.125],
-          MAT_PLATFORM_RUSTED_STEEL: [0.15, 0.09, 0.055],
-          MAT_PLATFORM_TARNISHED_BRONZE: [0.085, 0.065, 0.032],
-          // WEB-FIX-06B: full 62-material GLB audit (this file has 0 images/textures --
-          // every material is flat glTF factors, nothing is a texture-loading failure)
-          // found MAT_GLASS (9 City_Building meshes) has no surviving baseColorFactor,
-          // defaulting to glTF's flat white -- one of the two confirmed causes of the
-          // "pale/washed-out" City buildings in the latest screenshots. No color for
-          // MAT_GLASS itself survived export, so -- same methodology as the rusted-steel
-          // fix above -- this borrows the real exported baseColorFactor of its closest
-          // sibling in the SAME building set, MAT_WINDOW_DARK ([0.018,0.024,0.032]),
-          // rather than an invented hue.
-          MAT_GLASS: [0.018, 0.024, 0.032]
-        }
-        // MAT_PLATFORM_WET_CONCRETE exported with NO roughnessFactor at all (confirmed
-        // in the raw glTF JSON), which glTF defaults to 1.0 -- fully matte, zero visible
-        // specular/IBL reflection regardless of color or envMapIntensity. That default
-        // is the verified cause of "wet-concrete reflection largely absent": the floor
-        // was never capable of reflecting anything.
-        //
-        // WEB-FIX-06B: the same missing-roughnessFactor default (1.0, fully matte) is
-        // also present on MAT_CONCRETE (21 City_Building meshes -- the dominant facade
-        // material, 76-mesh MAT_CLIFF is the dominant terrain material) and
-        // MAT_CONCRETE_PORT_QUAY. At full roughness a diffuse material scatters 100% of
-        // the scene's ambient/IBL light with no falloff, which is what was making even
-        // the already-color-corrected dark City buildings and terrain read as
-        // washed-out/pale under this scene's RoomEnvironment ambient lighting -- the
-        // second confirmed cause, alongside MAT_GLASS above. Grounded values, not
-        // guesses: MAT_CONCRETE/MAT_CONCRETE_PORT_QUAY borrow MAT_PLATFORM_CONCRETE_
-        // PILLAR's real exported roughnessFactor (0.75, same concrete-family role,
-        // present because THAT material's roughness did survive export). MAT_CLIFF/
-        // MAT_CLIFF.002 borrow MAT_TERRAIN.004's real exported roughnessFactor (0.85,
-        // same rock/terrain family, present in that sibling material). The other keys
-        // already carry explicit, real roughness/metalness factors from the export and
-        // are left untouched.
-        const ROUGHNESS_FIX: Record<string, number> = {
-          MAT_PLATFORM_WET_CONCRETE: 0.42,
-          MAT_CONCRETE: 0.75,
-          MAT_CONCRETE_PORT_QUAY: 0.75
-        }
+        // The Blender procedural materials (wet/pillar/quay/city concrete, rusted steel, tarnished
+        // bronze, building facade) are rebuilt from their real node graphs in
+        // proceduralMaterials.ts; the cliff rock keeps its own shader above.
         const CLIFF_PROCEDURAL = new Set(['MAT_CLIFF', 'MAT_CLIFF.002'])
         root.traverse((obj) => {
           const mesh = obj as THREE.Mesh
@@ -274,26 +213,22 @@ export function loadEnvironment(
           for (const m of mats) {
             const mat = m as THREE.MeshStandardMaterial
             if (CLIFF_PROCEDURAL.has(mat.name)) {
-              // Real Blender-grounded procedural noise/height-wetness shader (see
-              // applyCliffProceduralShader above) -- supersedes the flat color/
-              // roughness substitute used for every other still-flat material below.
               mat.envMapIntensity = 1.0
               applyCliffProceduralShader(mat)
-              continue
             }
-            const fix = MATERIAL_COLOR_FIX[mat.name]
-            if (fix) {
-              mat.color.setRGB(fix[0], fix[1], fix[2])
-              mat.envMapIntensity = 1.0
-              mat.needsUpdate = true
-            }
-            const roughnessFix = ROUGHNESS_FIX[mat.name]
-            if (roughnessFix !== undefined) {
-              mat.roughness = roughnessFix
+            // MAT_ROAD exported without a roughness (glTF default 1.0, fully matte). In Blender its
+            // roughness ramp runs 0.12 to 0.40, a wet-looking asphalt. roadEndCaps.ts copies this
+            // value, so the caps stay in step.
+            if (mat.name === 'MAT_ROAD') {
+              mat.roughness = 0.3
               mat.needsUpdate = true
             }
           }
         })
+        applyProceduralMaterials(root)
+
+        // Windows that switch on and off over time (see buildingLights.ts).
+        applyBuildingLights(root)
 
         const find = (name: string): THREE.Object3D => {
           const o = root.getObjectByName(name)
