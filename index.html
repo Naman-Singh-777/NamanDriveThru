@@ -38,6 +38,8 @@
        default mode ('cors') and credentials 'same-origin', which is what
        crossorigin="anonymous" here matches. -->
   <link rel="preload" href="assets/environment.glb" as="fetch" crossorigin="anonymous" fetchpriority="high" />
+  <link rel="preload" href="assets/fonts/big-shoulders-display-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
+  <link rel="preload" href="assets/fonts/big-shoulders-display-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
 
   <meta property="og:type" content="website" />
   <meta property="og:title" content="Naman Singh — Interactive 3D Driving Portfolio" />
@@ -49,6 +51,20 @@
   <meta name="twitter:description" content="Drive a 3D car through an interactive world built with Three.js and Rapier physics to explore my projects, music and socials." />
 
   <style>
+    /* Menu-heading face: Big Shoulders Display (SIL OFL, self-hosted under
+       public/assets/fonts -- the CSP allows font-src 'self' only). Condensed
+       Chicago-signage / shipping-stencil letterforms, used for every menu
+       heading (overview labels, checkpoint titles + section headings,
+       achievement toast heading). Body copy stays on system-ui. */
+    @font-face {
+      font-family: 'Big Shoulders Display'; font-weight: 700; font-style: normal; font-display: swap;
+      src: url('/assets/fonts/big-shoulders-display-latin-700-normal.woff2') format('woff2');
+    }
+    @font-face {
+      font-family: 'Big Shoulders Display'; font-weight: 800; font-style: normal; font-display: swap;
+      src: url('/assets/fonts/big-shoulders-display-latin-800-normal.woff2') format('woff2');
+    }
+    :root { --font-heading: 'Big Shoulders Display', 'Arial Narrow', Impact, sans-serif; }
     html, body { margin: 0; padding: 0; overflow: hidden; background: #05070d; height: 100%; overscroll-behavior: none; }
     #app { width: 100vw; height: 100vh; display: block; touch-action: none; }
     #loading {
@@ -261,16 +277,39 @@
        invert(1) keeps it reading as a coherent flipped palette rather than a
        harsh raw negative. */
     #app.is-inverted { filter: invert(1) hue-rotate(180deg); }
-    .checkpoint-overlay__close {
-      position: absolute; top: 16px; right: 16px;
-      width: 32px; height: 32px; border-radius: 50%;
-      border: 1px solid rgba(255, 255, 255, 0.25);
-      background: rgba(255, 255, 255, 0.06);
-      color: rgba(255, 255, 255, 0.85);
-      font-size: 18px; line-height: 1;
-      cursor: pointer;
+    /* Frosted-glass EXIT pill: translucent fill, heavy backdrop blur, thin
+       translucent border, white label + X. Hover/focus adds a neon glow to
+       the border and the X. Hit target is 44px tall; Esc and a click on the
+       backdrop also close (see initOverlay in overlay.ts). */
+    #checkpoint-overlay-close {
+      position: absolute; top: 14px; right: 14px; z-index: 2;
+      display: inline-flex; align-items: center; gap: 9px;
+      min-height: 44px; box-sizing: border-box; padding: 0 20px 0 15px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.34);
+      background: rgba(255, 255, 255, 0.10);
+      -webkit-backdrop-filter: blur(22px) saturate(1.5); backdrop-filter: blur(22px) saturate(1.5);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 8px 24px rgba(0, 0, 0, 0.35);
+      color: #fff; cursor: pointer;
+      font: 800 17px/1 var(--font-heading); letter-spacing: 0.2em; text-transform: uppercase;
+      -webkit-tap-highlight-color: transparent;
+      transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, transform 0.12s ease;
     }
-    .checkpoint-overlay__close:hover { background: rgba(255, 255, 255, 0.16); }
+    #checkpoint-overlay-close .checkpoint-overlay__close-x {
+      width: 15px; height: 15px; flex-shrink: 0;
+      stroke: #fff; stroke-width: 2.4; stroke-linecap: round; fill: none;
+      transition: transform 0.22s ease, filter 0.18s ease, stroke 0.18s ease;
+    }
+    #checkpoint-overlay-close:hover, #checkpoint-overlay-close:focus-visible {
+      background: rgba(255, 255, 255, 0.16); border-color: #9cc4ff; outline: none;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 0 0 1px rgba(156, 196, 255, 0.5),
+                  0 0 22px rgba(120, 180, 255, 0.55), 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+    #checkpoint-overlay-close:hover .checkpoint-overlay__close-x,
+    #checkpoint-overlay-close:focus-visible .checkpoint-overlay__close-x {
+      stroke: #cfe3ff; transform: rotate(90deg); filter: drop-shadow(0 0 5px #7fb6ff) drop-shadow(0 0 10px #4f9bff);
+    }
+    #checkpoint-overlay-close:active { transform: scale(0.96); }
     /* WEB-PHASE-4 REDO Phase 13: title + the GitHub avatar badge share one
        row, badge pinned to the far right of the "PROJECTS" heading itself
        (not floating up by the close button) -- shown only while the Port
@@ -281,9 +320,10 @@
       gap: 10px; margin: 0 0 18px;
     }
     .checkpoint-overlay__title {
-      margin: 0; font-size: 13px; font-weight: 700;
-      letter-spacing: 0.22em; text-transform: uppercase;
-      color: rgba(255, 255, 255, 0.7);
+      margin: 0; padding-right: 130px; /* clear the EXIT pill */
+      font: 800 28px/1 var(--font-heading);
+      letter-spacing: 0.14em; text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.92);
     }
         .checkpoint-overlay__body { overflow-y: auto; flex: 1; }
     .checkpoint-overlay__empty { color: rgba(255, 255, 255, 0.55); font-size: 14px; margin: 8px 0; }
@@ -313,9 +353,9 @@
     .checkpoint-overlay__copy-btn:hover { color: #9cc4ff; }
     .checkpoint-overlay__desc { color: rgba(255, 255, 255, 0.5); font-size: 13px; }
     .checkpoint-overlay__section-heading {
-      margin: 0 0 10px; font-size: 11px; font-weight: 700;
-      letter-spacing: 0.18em; text-transform: uppercase;
-      color: rgba(255, 255, 255, 0.45);
+      margin: 0 0 10px; font: 700 18px/1.1 var(--font-heading);
+      letter-spacing: 0.16em; text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.62);
     }
     .checkpoint-overlay__section-heading:not(:first-child) { margin-top: 20px; }
     /* WEB-PHASE-4 REDO Phase 14: a small icon linking out to the live
@@ -509,10 +549,10 @@
       box-shadow: 0 0 14px rgba(255, 196, 77, 0.35);
     }
     .achievement-toast__label {
-      font-size: 10px; font-weight: 700; letter-spacing: 0.14em;
+      font: 700 14px/1.1 var(--font-heading); letter-spacing: 0.18em;
       text-transform: uppercase; color: #ffc44d; margin: 0 0 3px;
     }
-    .achievement-toast__title { font-size: 14px; font-weight: 700; margin: 0 0 2px; line-height: 1.25; }
+    .achievement-toast__title { font: 800 20px/1.1 var(--font-heading); letter-spacing: 0.06em; margin: 0 0 3px; }
     .achievement-toast__subtitle { font-size: 12px; color: #b8b6b4; margin: 0; line-height: 1.3; }
 
     /* Separate, shorter-lived popup explaining the key just unlocked --
@@ -634,7 +674,7 @@
        no static markup here. -->
   <div id="checkpoint-overlay" aria-hidden="true">
     <div id="checkpoint-overlay-panel" role="dialog" aria-modal="true" aria-labelledby="checkpoint-overlay-title">
-      <button id="checkpoint-overlay-close" aria-label="Close" type="button">&times;</button>
+      <button id="checkpoint-overlay-close" aria-label="Exit" type="button"><svg class="checkpoint-overlay__close-x" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3L13 13M13 3L3 13" /></svg><span>Exit</span></button>
       <div id="checkpoint-overlay-title-row" class="checkpoint-overlay__title-row">
         <h2 id="checkpoint-overlay-title" class="checkpoint-overlay__title"></h2>
       </div>
