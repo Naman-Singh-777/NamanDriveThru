@@ -73,20 +73,24 @@ void oc_waves(vec2 p0, float fp, out vec2 grad, out float crest, out float lost)
   crest = hn > 1e-4 ? clamp(h / hn * 1.9 - 0.45, 0.0, 1.0) : 0.0;
 }
 
-// Capillary ripples: two scales of drifting noise, central differences for the slope.
+// Wind ripples: two scales of drifting noise, central differences for the slope. The noise is
+// stretched across the wind (short along it, long across it) and slides downwind, so the surface
+// shows lanes of ripples running before the wind, not round blobs and rings.
 vec2 oc_ripples(vec2 p, float fp) {
   vec2 g = vec2(0.0);
+  vec2 wd = vec2(cos(OC_WIND), sin(OC_WIND));
+  vec2 wn = vec2(-wd.y, wd.x);
   for (int o = 0; o < 2; o++) {
     float sc = o == 0 ? 1.25 : 2.7;
     float amp = o == 0 ? 0.060 : 0.038;
     float vis = clamp((1.0 / sc / max(fp, 1e-4) - 5.0) / 10.0, 0.0, 1.0);
     if (vis <= 0.001) continue;                 // far water: no ripple cost at all
-    vec3 q = vec3(p * sc + vec2(0.35, -0.22) * uTime * (o == 0 ? 1.0 : 1.7), uTime * 0.18 + float(o) * 11.0);
+    vec3 q = vec3(dot(p, wd) * sc - uTime * (o == 0 ? 1.1 : 1.9), dot(p, wn) * sc * 0.3, uTime * 0.12 + float(o) * 11.0);
     float e = 0.12;
     float n0 = bn_vnoise(q);
     float nx = bn_vnoise(q + vec3(e, 0.0, 0.0)) - n0;
     float nz = bn_vnoise(q + vec3(0.0, e, 0.0)) - n0;
-    g += vec2(nx, nz) * (amp * vis / e);
+    g += (wd * nx + wn * (nz * 0.3)) * (amp * vis / e);
   }
   return g;
 }
@@ -99,7 +103,7 @@ export function applyOceanMaterial(mesh: THREE.Mesh, envMap: THREE.Texture | nul
     // Blender's MAT_WATER body colour is (0.0115, 0.0528, 0.0726) under Blender's lighting. The web
     // has no bounced light and a hemisphere tinted blue, so the value that reproduces the same
     // rendered colour (measured against the Blender frame, about 6/42/58) is a little greener.
-    color: new THREE.Color().setRGB(0.016, 0.04, 0.04),
+    color: new THREE.Color().setRGB(0.007, 0.017, 0.03),
     roughness: 0.08, // Blender 0.05..0.13
     metalness: 0,
     ior: 1.333, // water, as in the CG Geek recipe (F0 = 0.02)
@@ -170,7 +174,7 @@ vOcFoam = color_1.r;`
           * smoothstep(0.42, 0.72, bn_vnoise(vec3(swStreak, uTime * 0.35)))
           * (1.0 - smoothstep(30.0, 200.0, ocFp * 900.0));
         ocFoam = max(ocFoam, swBreak * (0.45 + 0.2 * swGust));
-        diffuseColor.rgb += vec3(0.004, 0.014, 0.017) * smoothstep(0.05, 0.9, swN); // light through thin crests
+        diffuseColor.rgb += vec3(0.002, 0.008, 0.014) * smoothstep(0.05, 0.9, swN); // light through thin crests
 ${shore ? `
         {
           vec4 shSt; float shD;
@@ -184,7 +188,7 @@ ${shore ? `
             ocFoam = max(ocFoam, lap * (0.55 + 0.4 * max(shSt.z, run)));
           }
         }` : ''}
-        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.52, 0.54, 0.56), ocFoam * 0.85);`
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.34, 0.37, 0.42), ocFoam * 0.85);`
       )
       .replace(
         '#include <roughnessmap_fragment>',
@@ -207,7 +211,7 @@ ${shore ? `
         '#include <emissivemap_fragment>',
         `#include <emissivemap_fragment>
         // faint turquoise light scattered through thin crests (volume scatter of the body colour)
-        totalEmissiveRadiance += vec3(0.0, 0.004, 0.006) * ocCrest * ocCrest;`
+        totalEmissiveRadiance += vec3(0.0, 0.002, 0.005) * ocCrest * ocCrest;`
       )
   }
   mesh.material = mat

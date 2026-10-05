@@ -8,6 +8,7 @@ import { applyBuildingLights } from './buildingLights'
 import { buildShoreSim } from './shoreSim'
 import { makeGusts } from './swell'
 import { applyRockOverlay } from './rockDetail'
+import { applyRockClosure } from './rockClosure'
 
 // WEB-FIX-07: MAT_CLIFF/MAT_CLIFF.002 (76 exported meshes -- the dominant terrain
 // material) are procedural Blender node materials, confirmed by read-only inspection
@@ -265,6 +266,9 @@ export function loadEnvironment(
         })
         // Windows that switch on and off over time (see buildingLights.ts).
         applyBuildingLights(root)
+
+        // Walls for the rock seams that were left open (see rockClosure.ts).
+        applyRockClosure(root)
 
         const find = (name: string): THREE.Object3D => {
           const o = root.getObjectByName(name)

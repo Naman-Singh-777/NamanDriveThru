@@ -157,8 +157,8 @@ void sw_eval(vec2 p, float t, float gust, int i0, int i1, out float h, out vec2 
   // the whole pattern wanders: sin of sin warps the sampling point by tens of metres
   vec2 wq = vec2(sin(p.y * 0.0113 + 1.7 * sin(p.x * 0.0071 + t * 0.09) + t * 0.05),
                  sin(p.x * 0.0097 + 1.9 * sin(p.y * 0.0083 - t * 0.07) - t * 0.04 + 2.0));
-  vec2 q = p + wq * (14.0 + 34.0 * gust);
-  float fm = 0.85 + 1.1 * gust;
+  vec2 q = p + wq * (9.0 + 22.0 * gust);
+  float fm = 0.6 + 0.8 * gust;
   for (int i = i0; i < i1; i++) {
     float fi = float(i);
     float env = 1.0 + 0.35 * sin(SW_M1[i] * t + SW_P1[i]) + 0.2 * sin(SW_M2[i] * t + SW_P2[i]);
