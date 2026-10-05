@@ -183,8 +183,8 @@
       font-family: system-ui, sans-serif; text-align: center; padding: 24px;
     }
     #rotate-overlay .icon { font-size: 44px; }
-    @media (pointer: coarse) and (orientation: portrait) {
-      #rotate-overlay { display: flex; }
+    @media (orientation: portrait) {
+      html[data-input-mode="touch"] #rotate-overlay { display: flex; }
     }
 
     /* WEB-PHASE-4: checkpoint "OPEN <Enter>" prompt -- a small screen-space

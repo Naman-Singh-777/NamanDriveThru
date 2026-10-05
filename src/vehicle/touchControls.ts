@@ -88,20 +88,54 @@ function tryLockLandscapeOnce(): void {
 // immediately on load).
 function initAdaptiveInputMode(): void {
   const root = document.documentElement
-  const setMode = (mode: 'touch' | 'pointer') => {
-    if (root.getAttribute('data-input-mode') === mode) return
-    root.setAttribute('data-input-mode', mode)
-    if (mode === 'touch') tryLockLandscapeOnce() // arm it even if the session started in keyboard/mouse mode
+  let mode: 'touch' | 'pointer' | null = null
+  let sawRealInput = false
+  const setMode = (next: 'touch' | 'pointer') => {
+    if (mode === next) return
+    mode = next
+    root.setAttribute('data-input-mode', next)
+    if (next === 'touch') tryLockLandscapeOnce() // arm it even if the session started in keyboard/mouse mode
   }
-  window.addEventListener('touchstart', () => setMode('touch'), { passive: true })
-  window.addEventListener('keydown', () => setMode('pointer'))
-  window.addEventListener('mousedown', (e) => {
-    // A touch tap can also dispatch a synthetic mousedown afterwards on some
-    // browsers -- ignore that so a tap doesn't immediately flip the mode
-    // straight back to "pointer".
-    if ((e as MouseEvent & { pointerType?: string }).pointerType === 'touch') return
-    setMode('pointer')
-  })
+
+  // Best guess BEFORE any interaction, so the right controls are decided
+  // before the game even finishes loading. Pointer media queries alone lie on
+  // touchscreen laptops (a Windows laptop here reports pointer:coarse, no
+  // fine pointer, no hover, 10 touch points), so they are combined with the
+  // OS: only a phone/tablet OS with no mouse or trackpad starts in touch
+  // mode. A touchscreen laptop starts in keyboard/mouse mode and flips to
+  // touch on its first real tap. The listeners below re-run the guess if the
+  // device's pointer capabilities change (dock/undock, tablet mode) until a
+  // real input arrives, after which real input always wins.
+  const nav = navigator as Navigator & { userAgentData?: { mobile?: boolean } }
+  const mobileOS =
+    nav.userAgentData?.mobile === true ||
+    /Android|iPhone|iPad|iPod/i.test(nav.userAgent) ||
+    (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1) // iPadOS posing as a Mac
+  const guess = () => {
+    if (sawRealInput) return
+    const noFinePointer = !window.matchMedia('(any-pointer: fine)').matches
+    setMode(mobileOS && noFinePointer ? 'touch' : 'pointer')
+  }
+  guess()
+  for (const q of ['(pointer: coarse)', '(any-pointer: fine)', '(any-pointer: coarse)']) {
+    window.matchMedia(q).addEventListener('change', guess)
+  }
+
+  // Real interaction always wins, checked continuously: each event is one
+  // string compare once the mode already matches, so this costs ~nothing.
+  // Pointer Events carry pointerType, so a tap's synthetic follow-up mouse
+  // events (which are not pointer events) can never flip the mode back.
+  const real = (next: 'touch' | 'pointer') => {
+    sawRealInput = true
+    setMode(next)
+  }
+  const onPointer = (e: PointerEvent) => {
+    if (e.pointerType === 'mouse') real('pointer')
+    else if (e.pointerType === 'touch' || e.pointerType === 'pen') real('touch')
+  }
+  window.addEventListener('pointerdown', onPointer, { passive: true, capture: true })
+  window.addEventListener('pointermove', onPointer, { passive: true, capture: true })
+  window.addEventListener('keydown', () => real('pointer'))
 }
 
 export function bindTouchControls(state: InputState): void {
