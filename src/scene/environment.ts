@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { applyPortRailFix } from './portRailFix'
 
 // WEB-FIX-07: MAT_CLIFF/MAT_CLIFF.002 (76 exported meshes -- the dominant terrain
 // material) are procedural Blender node materials, confirmed by read-only inspection
@@ -155,6 +156,11 @@ export function loadEnvironment(
           if (/^RoadDetail_Barrier_/i.test(obj.name)) strayBarriers.push(obj)
         })
         for (const b of strayBarriers) b.parent?.remove(b)
+
+        // Port edge railings: restore the missing sections and re-seat the four corner
+        // lamps (see portRailFix.ts). Runs after the light strip above so the lamp
+        // lights are already gone and only the lamp meshes move.
+        applyPortRailFix(root)
 
         // MAT_WATER exported with no base color (Blender's procedural ocean shader
         // can't be baked to a single glTF value), which left it defaulting to flat
