@@ -182,34 +182,41 @@
 #loading .ld-maze { transform: scale(var(--ms1, 2.2)); }
 #loading .ld-maze2 { transform: scale(var(--ms2, 1.4)); }
 /* supplied "maze runner" loaders */
+/* Same two loaders, but the moving dot is its own layer driven by `transform`. The original animated
+   background-position, which the browser has to repaint on the main thread, so the loaders froze
+   whenever the page was busy decoding the world. Transform animations run on the compositor and keep
+   going. Dot positions are the exact background-position values of the supplied keyframes. */
 #loading .ld-maze {
-  width: 40px; aspect-ratio: 1;
-  background: radial-gradient(farthest-side, #000 90%, #0000) 50%/8px 8px no-repeat, conic-gradient(from -90deg at 15px 15px, #0000 90deg, #fff 0) 0 0/25px 25px;
-  animation: ld-l8 1.5s infinite;
+  position: relative; overflow: hidden; width: 40px; aspect-ratio: 1;
+  background: conic-gradient(from -90deg at 15px 15px, #0000 90deg, #fff 0) 0 0/25px 25px;
 }
+#loading .ld-maze::before, #loading .ld-maze2::before {
+  content: ''; position: absolute; left: 0; top: 0; width: 8px; height: 8px; will-change: transform;
+  background: radial-gradient(farthest-side, #000 90%, #0000);
+}
+#loading .ld-maze::before { animation: ld-l8 1.5s infinite; }
 @keyframes ld-l8 {
-  0% { background-position: left -10px top 50%, 0 0; }
-  50% { background-position: right -10px top 50%, 0 0; }
-  50.01% { background-position: right 50% top -10px, 0 0; }
-  100% { background-position: right 50% bottom -10px, 0 0; }
+  0% { transform: translate(-10px, 16px); }
+  50% { transform: translate(42px, 16px); }
+  50.01% { transform: translate(16px, -10px); }
+  100% { transform: translate(16px, 42px); }
 }
 #loading .ld-maze2 {
-  width: 70px; aspect-ratio: 1;
+  position: relative; overflow: hidden; width: 70px; aspect-ratio: 1;
   background:
-    radial-gradient(farthest-side, #000 90%, #0000) 0 0/8px 8px no-repeat,
     conic-gradient(from -90deg at 30px 30px, #0000 90deg, #fff 0) 0 0/40px 40px,
     conic-gradient(from 90deg at 10px 10px, #0000 90deg, #fff 0) 0 0/40px 40px no-repeat,
     conic-gradient(from -90deg at 30px 30px, #0000 90deg, #fff 0) 100% 100%/40px 40px no-repeat;
-  animation: ld-l5 2s infinite;
 }
+#loading .ld-maze2::before { animation: ld-l5 2s infinite; }
 @keyframes ld-l5 {
-  0% { background-position: left 1px top 1px, 0 0, 0 0, 100% 100%; }
-  16.67% { background-position: left 50% top 1px, 0 0, 0 0, 100% 100%; }
-  33.33% { background-position: left 50% bottom 1px, 0 0, 0 0, 100% 100%; }
-  50% { background-position: right 1px bottom 1px, 0 0, 0 0, 100% 100%; }
-  66.67% { background-position: right 1px bottom 50%, 0 0, 0 0, 100% 100%; }
-  83.33% { background-position: left 1px bottom 50%, 0 0, 0 0, 100% 100%; }
-  100% { background-position: left 1px top 1px, 0 0, 0 0, 100% 100%; }
+  0% { transform: translate(1px, 1px); }
+  16.67% { transform: translate(31px, 1px); }
+  33.33% { transform: translate(31px, 61px); }
+  50% { transform: translate(61px, 61px); }
+  66.67% { transform: translate(61px, 31px); }
+  83.33% { transform: translate(1px, 31px); }
+  100% { transform: translate(1px, 1px); }
 }
 
 /* key caps + rows */
@@ -221,10 +228,18 @@
   display: inline-flex; align-items: center; justify-content: center; min-width: 30px; height: 30px; padding: 0 7px; box-sizing: border-box;
   border-radius: 7px; border: 1px solid rgba(154, 179, 245, 0.38); border-bottom-width: 3px;
   background: linear-gradient(#1d3555, #10233d); font: 700 13px/1 system-ui, sans-serif; color: #e6efff;
+  position: relative; isolation: isolate;
   animation: ld-keyhit 3.2s ease-in-out infinite; animation-delay: calc(var(--i, 0) * 0.35s);
 }
+/* the "pressed" glow is an overlay faded with opacity (compositor), not a background change (main thread) */
+#loading .ld-key::before {
+  content: ''; position: absolute; inset: -1px; border-radius: 7px; z-index: -1; pointer-events: none;
+  background: linear-gradient(#ffd977, #c98a1f); opacity: 0;
+  animation: ld-keyglow 3.2s ease-in-out infinite; animation-delay: calc(var(--i, 0) * 0.35s);
+}
 #loading .ld-key--wide { min-width: 78px; }
-@keyframes ld-keyhit { 0%, 18%, 100% { transform: none; background: linear-gradient(#1d3555, #10233d); } 6% { transform: translateY(2px); background: linear-gradient(#ffd977, #c98a1f); color: #1b1200; } }
+@keyframes ld-keyhit { 0%, 18%, 100% { transform: none; } 6% { transform: translateY(2px); } }
+@keyframes ld-keyglow { 0%, 18%, 100% { opacity: 0; } 6% { opacity: 0.62; } }
 #loading .ld-note { font-size: 12.5px; line-height: 1.4; color: #9fb4de; margin: 0; }
 #loading .ld-note b, #loading .ld-text b { color: #fff; }
 #loading .ld-text { font-size: 13.5px; line-height: 1.45; color: #c9d8f5; margin: 0; }
@@ -276,5 +291,5 @@
   #loading .ld-panel { border-left: 0; border-top: 1px solid rgba(154, 179, 245, 0.16); box-shadow: inset 0 16px 44px -30px rgba(255, 140, 50, 0.4); }
 }
 @media (prefers-reduced-motion: reduce) {
-  #loading .ld-glow, #loading .ld-firelight, #loading .ld-key { animation: none; }
+  #loading .ld-glow, #loading .ld-firelight, #loading .ld-key, #loading .ld-key::before { animation: none; }
 }

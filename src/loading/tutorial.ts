@@ -53,15 +53,35 @@ export function markLoaded(): void {
 }
 
 // ---------- touch vs desktop copy (mirrors the game's own input-mode switching) ----------
-let isTouch = window.matchMedia('(pointer: coarse)').matches
+// The same first guess the game's own controls make (touchControls.ts): only a phone/tablet OS with no
+// mouse or trackpad starts in touch mode. `(pointer: coarse)` alone is wrong on touchscreen laptops, which
+// report coarse and no fine pointer, so a PC used to show the phone instructions here.
+const nav = navigator as Navigator & { userAgentData?: { mobile?: boolean } }
+const mobileOS =
+  nav.userAgentData?.mobile === true ||
+  /Android|iPhone|iPad|iPod/i.test(nav.userAgent) ||
+  (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1) // iPadOS posing as a Mac
+let sawRealInput = false
+const guessTouch = (): boolean => mobileOS && !window.matchMedia('(any-pointer: fine)').matches
+let isTouch = guessTouch()
 function applyInputMode(): void {
   root?.classList.toggle('is-touch', isTouch)
 }
+// until a real tap/click/key arrives, follow changes in the device's pointer capabilities
+for (const q of ['(pointer: coarse)', '(any-pointer: fine)', '(any-pointer: coarse)']) {
+  window.matchMedia(q).addEventListener('change', () => {
+    if (sawRealInput) return
+    isTouch = guessTouch()
+    applyInputMode()
+  })
+}
+// a real interaction always wins, in either direction
 window.addEventListener(
   'pointerdown',
   (e) => {
-    const t = e.pointerType === 'touch'
     if (e.pointerType !== 'touch' && e.pointerType !== 'mouse' && e.pointerType !== 'pen') return
+    sawRealInput = true
+    const t = e.pointerType !== 'mouse'
     if (t !== isTouch) {
       isTouch = t
       applyInputMode()
@@ -72,6 +92,7 @@ window.addEventListener(
 window.addEventListener(
   'keydown',
   () => {
+    sawRealInput = true
     if (isTouch && active) {
       isTouch = false
       applyInputMode()

@@ -32,7 +32,7 @@
   border-radius: 22px;
   transform-origin: 16px 22px;
   transform: rotate(70deg);
-          animation: ld-right_arm 10s ease-in-out infinite;
+          animation: ld-right_arm_in 1s ease-in-out both, ld-right_arm_loop 4s ease-in-out 1s infinite;
 }
 #loading .right-arm .right-hand {
   position: absolute;
@@ -44,7 +44,7 @@
   background: #f1c5b4;
   transform-origin: center center;
   transform: rotate(-40deg);
-          animation: ld-right_hand 10s ease-in-out infinite;
+          animation: ld-right_hand_in 1s ease-in-out both, ld-right_hand_loop 4s ease-in-out 1s infinite;
 }
 #loading .right-arm .right-hand::after {
   content: "";
@@ -56,7 +56,7 @@
   border-radius: 10px;
   background: #f1c5b4;
   transform: translateY(16px);
-          animation: ld-right_finger 10s ease-in-out infinite;
+          animation: ld-right_finger_in 1s ease-in-out both;
 }
 #loading .left-arm {
   position: absolute;
@@ -68,7 +68,7 @@
   border-bottom-left-radius: 8px;
   transform-origin: 60px 26px;
   transform: rotate(-70deg);
-          animation: ld-left_arm 10s ease-in-out infinite;
+          animation: ld-left_arm_in 1s ease-in-out both, ld-left_arm_loop 4s ease-in-out 1s infinite;
 }
 #loading .left-arm .left-hand {
   position: absolute;
@@ -91,7 +91,7 @@
   background: #f1c5b4;
   transform-origin: right bottom;
   transform: scaleX(0);
-          animation: ld-left_finger 10s ease-in-out infinite;
+          animation: ld-left_finger_in 1s ease-in-out both, ld-left_finger_loop 4s ease-in-out 1s infinite;
 }
 #loading .head {
   position: absolute;
@@ -101,7 +101,7 @@
   height: 210px;
   transform-origin: center center;
   transform: rotate(-3deg);
-          animation: ld-head 10s ease-in-out infinite;
+          animation: ld-head_in 1s ease-in-out both, ld-head_loop 4s ease-in-out 1s infinite;
 }
 #loading .head .beard {
   position: absolute;
@@ -444,7 +444,7 @@
   height: 120px;
   border-radius: 50%;
   transform: rotate(-360deg);
-          animation: ld-path_square 10s ease-in-out infinite;
+          animation: ld-sq_rise 1s ease-in-out both, ld-sq_hover 4.5s linear 1s infinite;
 }
 #loading .square::after {
   content: "";
@@ -463,7 +463,7 @@
   height: 100px;
   border-radius: 50%;
   transform: rotate(-360deg);
-          animation: ld-path_circle 10s ease-in-out infinite;
+          animation: ld-ci_rise 1s ease-in-out both, ld-ci_hover 4.5s linear 1s infinite;
 }
 #loading .circle::after {
   content: "";
@@ -483,7 +483,7 @@
   height: 110px;
   border-radius: 50%;
   transform: rotate(-360deg);
-          animation: ld-path_triangle 10s ease-in-out infinite;
+          animation: ld-tr_rise 1s ease-in-out both, ld-tr_hover 4.5s linear 1s infinite;
 }
 #loading .triangle::after {
   content: "";
@@ -555,3 +555,25 @@
     width: 100%;
   }
 }
+
+/* The wizard now keeps conjuring until START is pressed. Each supplied 10s loop is split into a
+   one second wind-up (hands rise, shapes lift off the fire) and a seamless loop of the casting
+   motion, so the shapes keep floating instead of dropping back onto the fire part-way through.
+   The shapes only fall when the visitor presses START (see dropShapes() in tutorial.ts). */
+@keyframes ld-right_arm_in { from { transform: rotate(70deg); } to { transform: rotate(8deg); } }
+@keyframes ld-right_arm_loop { 0%, 100% { transform: rotate(8deg); } 12.5% { transform: rotate(20deg); } 25% { transform: rotate(10deg); } 37.5% { transform: rotate(26deg); } 50% { transform: rotate(10deg); } 62.5% { transform: rotate(28deg); } 75% { transform: rotate(9deg); } 87.5% { transform: rotate(28deg); } }
+@keyframes ld-left_arm_in { from { transform: rotate(-70deg); } to { transform: rotate(6deg); } }
+@keyframes ld-left_arm_loop { 0%, 100% { transform: rotate(6deg); } 12.5% { transform: rotate(-18deg); } 25% { transform: rotate(5deg); } 37.5% { transform: rotate(-18deg); } 50% { transform: rotate(5deg); } 62.5% { transform: rotate(-17deg); } 75% { transform: rotate(5deg); } 87.5% { transform: rotate(-18deg); } }
+@keyframes ld-right_hand_in { from { transform: rotate(-40deg); } to { transform: rotate(-20deg); } }
+@keyframes ld-right_hand_loop { 0%, 100% { transform: rotate(-20deg); } 12.5% { transform: rotate(-5deg); } 25% { transform: rotate(-60deg); } 37.5% { transform: rotate(0deg); } 50% { transform: rotate(-60deg); } 62.5% { transform: rotate(0deg); } 75% { transform: rotate(-40deg); } 87.5% { transform: rotate(-60deg); } }
+@keyframes ld-right_finger_in { from { transform: translateY(16px); } to { transform: none; } }
+@keyframes ld-left_finger_in { from { transform: scaleX(0); } to { transform: scaleX(1) rotate(6deg); } }
+@keyframes ld-left_finger_loop { 0%, 100% { transform: scaleX(1) rotate(6deg); } 12.5% { transform: scaleX(1) rotate(0deg); } 25% { transform: scaleX(1) rotate(8deg); } 37.5% { transform: scaleX(1) rotate(0deg); } 50% { transform: scaleX(1) rotate(7deg); } 62.5% { transform: scaleX(1) rotate(0deg); } 75% { transform: scaleX(1) rotate(5deg); } 87.5% { transform: scaleX(1) rotate(0deg); } }
+@keyframes ld-head_in { from { transform: rotate(-3deg); } to { transform: translatex(10px) rotate(7deg); } }
+@keyframes ld-head_loop { 0%, 100% { transform: translatex(10px) rotate(7deg); } 50% { transform: translatex(0px) rotate(0deg); } }
+@keyframes ld-sq_rise { from { transform: translateY(0); } to { transform: translateY(-155px) translatex(-15px) rotate(10deg); } }
+@keyframes ld-sq_hover { from { transform: translateY(-155px) translatex(-15px) rotate(10deg); } to { transform: translateY(-155px) translatex(-15px) rotate(-350deg); } }
+@keyframes ld-ci_rise { from { transform: translateY(0); } to { transform: translateY(-100px) rotate(-5deg); } }
+@keyframes ld-ci_hover { from { transform: translateY(-100px) rotate(-5deg); } to { transform: translateY(-100px) rotate(-365deg); } }
+@keyframes ld-tr_rise { from { transform: translateY(0); } to { transform: translateY(-172px) translatex(10px) rotate(-10deg); } }
+@keyframes ld-tr_hover { from { transform: translateY(-172px) translatex(10px) rotate(-10deg); } to { transform: translateY(-172px) translatex(10px) rotate(-370deg); } }

@@ -94,65 +94,139 @@ let popupTimer: number | undefined
 let popupPoofTimer: number | undefined
 
 const TOAST_TRANSITION_MS = 300
+// The toast's text smokes away this long before the box slides off, so the box leaves empty.
+const TOAST_SMOKE_LEAD_MS = 650
+const TOAST_HOLD_MS = 5000
+
+const reduceMotion = (): boolean => window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+// ---------- smoke text ----------
+// Every letter is its own span so the text can condense out of smoke when it appears and
+// dissipate back into it when it goes (CSS keyframes smk-in / key-popup-smoke-out in
+// index.html), with soft smoke puffs rising off the box at the same moments. Words are
+// wrapped (nowrap) so long lines still break between words, not mid-word.
+function smokeText(el: HTMLElement, text: string): HTMLElement[] {
+  el.textContent = ''
+  const letters: HTMLElement[] = []
+  const words = text.split(' ')
+  words.forEach((w, wi) => {
+    const word = document.createElement('span')
+    word.className = 'smk-w'
+    for (const ch of w) {
+      const s = document.createElement('span')
+      s.className = 'smk-c'
+      s.textContent = ch
+      word.appendChild(s)
+      letters.push(s)
+    }
+    el.appendChild(word)
+    if (wi < words.length - 1) el.appendChild(document.createTextNode(' '))
+  })
+  return letters
+}
+
+function smokeIn(letters: HTMLElement[], baseDelayMs = 0): void {
+  letters.forEach((s, i) => {
+    s.style.animation = 'smk-in 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) both'
+    s.style.animationDelay = `${baseDelayMs + Math.min(i * 16, 420)}ms`
+  })
+}
+
+function smokeOut(letters: HTMLElement[]): void {
+  letters.forEach((s, i) => {
+    s.style.animation = `key-popup-smoke-out ${SMOKE_DURATION_MS}ms ease-in-out forwards`
+    s.style.animationDelay = `${Math.min(i * SMOKE_LETTER_STEP_MS, SMOKE_LETTER_MAX_DELAY_MS)}ms`
+  })
+}
+
+// A burst of soft smoke puffs rising off the box (layout size, so a box that is mid-slide
+// still gets puffs in the right place).
+function emitSmoke(host: HTMLElement, count: number): void {
+  if (reduceMotion()) return
+  let layer = host.querySelector<HTMLElement>(':scope > .smk-fx')
+  if (!layer) {
+    layer = document.createElement('div')
+    layer.className = 'smk-fx'
+    host.appendChild(layer)
+  }
+  const w = host.offsetWidth
+  const h = host.offsetHeight
+  for (let i = 0; i < count; i++) {
+    const p = document.createElement('i')
+    p.className = 'smk-puff'
+    layer.appendChild(p)
+    const x = w * (0.04 + Math.random() * 0.92)
+    const y = h * (0.3 + Math.random() * 0.5)
+    const rise = 26 + Math.random() * 46
+    const drift = (Math.random() - 0.5) * 56
+    const s0 = 0.5 + Math.random() * 0.4
+    const s1 = 1.5 + Math.random() * 1.2
+    const anim = p.animate(
+      [
+        { transform: `translate(${x}px, ${y}px) scale(${s0})`, opacity: 0 },
+        { transform: `translate(${x + drift * 0.4}px, ${y - rise * 0.45}px) scale(${(s0 + s1) / 2})`, opacity: 0.75, offset: 0.3 },
+        { transform: `translate(${x + drift}px, ${y - rise}px) scale(${s1})`, opacity: 0 }
+      ],
+      { duration: 900 + Math.random() * 700, delay: Math.random() * 260, easing: 'ease-out', fill: 'both' }
+    )
+    anim.onfinish = () => p.remove()
+  }
+}
+
+let toastLetters: HTMLElement[] = []
+let popupLetters: HTMLElement[] = []
 
 // Bottom-right, holds for 5s, per spec. display stays 'none' at rest (not
 // just opacity:0) and is only flipped on for the duration it's actually
 // shown -- a reported "perpetual translucent box" in this corner traced to
 // a GPU-compositor ghost on an element that's opacity:0 but still live in
 // the render tree; display:none removes that possibility entirely.
+// The title and subtitle condense out of smoke as the box slides in, and smoke off again
+// just before it slides away.
 function showToast(meta: ShortcutMeta): void {
   if (toastTimer !== undefined) window.clearTimeout(toastTimer)
   if (toastHideTimer !== undefined) window.clearTimeout(toastHideTimer)
-  toastTitleEl.textContent = meta.achievementTitle
-  toastSubEl.textContent = meta.achievementSubtitle
+  toastLetters = [...smokeText(toastTitleEl, meta.achievementTitle), ...smokeText(toastSubEl, meta.achievementSubtitle)]
   toastEl.style.display = 'flex'
   void toastEl.offsetWidth // force a layout flush so display:none -> flex doesn't eat the transition
+  smokeIn(toastLetters, 220)
   toastEl.classList.add('is-visible')
+  emitSmoke(toastEl, 16)
   toastTimer = window.setTimeout(() => {
-    toastEl.classList.remove('is-visible')
-    toastHideTimer = window.setTimeout(() => { toastEl.style.display = 'none' }, TOAST_TRANSITION_MS)
-  }, 5000)
-}
-
-// Splits the popup text into one <span> per letter so the exit animation
-// (see triggerSmokeOut below) can dissipate it letter by letter, per the
-// user-supplied smoke-text reference.
-function setPopupLetters(text: string): void {
-  popupTextEl.textContent = ''
-  for (const ch of text) {
-    const span = document.createElement('span')
-    span.textContent = ch === ' ' ? '\u00A0' : ch
-    popupTextEl.appendChild(span)
-  }
+    smokeOut(toastLetters)
+    emitSmoke(toastEl, 14)
+    toastTimer = window.setTimeout(() => {
+      toastEl.classList.remove('is-visible')
+      toastHideTimer = window.setTimeout(() => { toastEl.style.display = 'none' }, TOAST_TRANSITION_MS)
+    }, TOAST_SMOKE_LEAD_MS)
+  }, TOAST_HOLD_MS - TOAST_SMOKE_LEAD_MS)
 }
 
 const SMOKE_LETTER_STEP_MS = 9
 const SMOKE_LETTER_MAX_DELAY_MS = 350
 const SMOKE_DURATION_MS = 600
 
-// Staggers each letter's smoke-dissipate animation (CSS does the actual
-// rotate/translate/scale/blur/fade -- see #key-unlock-popup.is-poofing in
-// index.html) and fades the pill's own chrome out alongside it.
+// Smoke-dissipates each letter (staggered) and fades the pill's own chrome out alongside it.
 function triggerSmokeOut(): void {
-  const letters = Array.from(popupTextEl.children) as HTMLElement[]
-  letters.forEach((span, i) => {
-    span.style.animationDelay = `${Math.min(i * SMOKE_LETTER_STEP_MS, SMOKE_LETTER_MAX_DELAY_MS)}ms`
-  })
+  smokeOut(popupLetters)
+  emitSmoke(popupEl, 14)
   popupEl.classList.remove('is-visible')
   popupEl.classList.add('is-poofing')
 }
 
-// Dead center, holds for 2s, then "poofs" -- a letter-by-letter smoke
-// dissipation, distinct from its gentler scale-in entrance -- per spec.
+// Dead center: the line condenses out of smoke, holds for 2s, then "poofs" -- a
+// letter-by-letter smoke dissipation -- per spec.
 // Same display:none-at-rest guard as the achievement toast above.
 function showKeyPopup(meta: ShortcutMeta): void {
   if (popupTimer !== undefined) window.clearTimeout(popupTimer)
   if (popupPoofTimer !== undefined) window.clearTimeout(popupPoofTimer)
   popupEl.classList.remove('is-poofing')
-  setPopupLetters(meta.keyPopupText)
+  popupLetters = smokeText(popupTextEl, meta.keyPopupText)
   popupEl.style.display = 'block'
   void popupEl.offsetWidth
+  smokeIn(popupLetters, 120)
   popupEl.classList.add('is-visible')
+  emitSmoke(popupEl, 16)
   popupTimer = window.setTimeout(() => {
     triggerSmokeOut()
     popupPoofTimer = window.setTimeout(() => {
@@ -161,7 +235,6 @@ function showKeyPopup(meta: ShortcutMeta): void {
     }, SMOKE_LETTER_MAX_DELAY_MS + SMOKE_DURATION_MS + 100)
   }, 2000)
 }
-
 function revealChip(id: CheckpointId): void {
   document.getElementById(META[id].chipId)?.classList.add('is-unlocked')
 }
