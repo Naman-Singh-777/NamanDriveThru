@@ -6,6 +6,7 @@ import { applyOceanMaterial } from './ocean'
 import { applyProceduralMaterials } from './proceduralMaterials'
 import { applyBuildingLights } from './buildingLights'
 import { buildShoreSim } from './shoreSim'
+import { makeGusts } from './swell'
 import { applyRockOverlay } from './rockDetail'
 
 // WEB-FIX-07: MAT_CLIFF/MAT_CLIFF.002 (76 exported meshes -- the dominant terrain
@@ -193,7 +194,7 @@ export function loadEnvironment(
           if (!mesh.isMesh || Array.isArray(mesh.material)) return
           const mat = mesh.material as THREE.MeshStandardMaterial | undefined
           if (!mat) return
-          if (/ocean|water/i.test(obj.name) || /water/i.test(mat.name ?? '')) applyOceanMaterial(mesh, scene.environment, shore)
+          if (/ocean|water/i.test(obj.name) || /water/i.test(mat.name ?? '')) applyOceanMaterial(mesh, scene.environment, shore, makeGusts(root))
         })
 
         // BodyPaint (the car's main paint shell) exported with only metallicFactor=0
