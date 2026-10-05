@@ -20,6 +20,7 @@ import { playActivationChime } from './vehicle/checkpointAudio'
 import { addRoadEndCaps, type RoadEndCapDef } from './scene/roadEndCaps'
 import { initOverlay, requestOpenOverlay, isOverlayOpen, isOverlayBusy } from './overlay'
 import { initFullscreen } from './fullscreen'
+import { isTutorialActive, markLoaded, waitForStart } from './loading/tutorial'
 import { initAchievements, registerVisit, hasVisited, notifyOverlayClosed } from './vehicle/achievements'
 import { initDeterrence } from './security/deterrence'
 import { initOwnerBypassToggle, isOwnerBypassOn } from './security/ownerBypass'
@@ -388,7 +389,8 @@ async function main(): Promise<void> {
   initAchievements(activateCheckpointById)
 
   window.addEventListener('keydown', (e) => {
-    if (e.repeat) return
+    // The loading/tutorial screen is still up: Enter, M/G/C and the camera keys must not reach the world yet.
+    if (e.repeat || isTutorialActive()) return
     // WEB-PHASE-4: ENTER activates whichever checkpoint the car is currently
     // inside (debounced for free by the e.repeat guard above, same as every
     // other key here). Does nothing while the overlay is already open --
@@ -469,6 +471,11 @@ async function main(): Promise<void> {
   })
 
   loadingFill.style.width = '100%'
+  // The world is genuinely loaded. Draw one frame now so the first real frame under the fading
+  // loading screen does not stall on shader compilation, then wait for SKIP TUTORIAL / START.
+  renderer.render(scene, camera)
+  markLoaded()
+  await waitForStart()
   loadingEl.style.display = 'none'
   // WEB-PHASE-4 REDO Phase 13: on-screen touch controls (D-pad/brake/shortcut
   // chips) stay hidden via CSS (index.html) until this class is set -- i.e.
