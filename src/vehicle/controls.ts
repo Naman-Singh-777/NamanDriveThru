@@ -16,30 +16,56 @@ const BRAKE_KEYS = new Set(['Space'])
 const NAV_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'])
 
 export function createControls(): InputState {
-  const held = new Set<string>()
+  // Keys currently down, in the order they were pressed. Opposite keys (W/S, A/D)
+  // are resolved by recency: the one pressed last wins, and the earlier one takes
+  // over again if the later one is released while it is still down.
+  const held: string[] = []
   const state: InputState = { forward: false, reverse: false, left: false, right: false, brake: false }
 
+  function axis(a: Set<string>, b: Set<string>): 1 | -1 | 0 {
+    for (let i = held.length - 1; i >= 0; i--) {
+      if (a.has(held[i])) return 1
+      if (b.has(held[i])) return -1
+    }
+    return 0
+  }
+
   function recompute() {
-    state.forward = [...FORWARD_KEYS].some((k) => held.has(k))
-    state.reverse = [...REVERSE_KEYS].some((k) => held.has(k))
-    state.left = [...LEFT_KEYS].some((k) => held.has(k))
-    state.right = [...RIGHT_KEYS].some((k) => held.has(k))
-    state.brake = [...BRAKE_KEYS].some((k) => held.has(k))
+    const fr = axis(FORWARD_KEYS, REVERSE_KEYS)
+    const lr = axis(LEFT_KEYS, RIGHT_KEYS)
+    state.forward = fr === 1
+    state.reverse = fr === -1
+    state.left = lr === 1
+    state.right = lr === -1
+    state.brake = held.some((k) => BRAKE_KEYS.has(k))
+  }
+
+  function releaseAll() {
+    held.length = 0
+    recompute()
   }
 
   window.addEventListener('keydown', (e) => {
     if (NAV_KEYS.has(e.code)) e.preventDefault()
-    held.add(e.code)
+    const i = held.indexOf(e.code)
+    if (i === -1) held.push(e.code)
+    else if (!e.repeat) {
+      // A fresh press of a key we thought was already down means we missed its keyup.
+      held.splice(i, 1)
+      held.push(e.code)
+    }
     recompute()
   })
   window.addEventListener('keyup', (e) => {
-    held.delete(e.code)
+    const i = held.indexOf(e.code)
+    if (i !== -1) held.splice(i, 1)
     recompute()
   })
-  window.addEventListener('blur', () => {
-    held.clear()
-    recompute()
-  })
+  // Keyups can be swallowed when focus changes or the page goes fullscreen,
+  // which would leave a key "stuck" down and fight the one actually pressed.
+  window.addEventListener('blur', releaseAll)
+  document.addEventListener('visibilitychange', releaseAll)
+  document.addEventListener('fullscreenchange', releaseAll)
 
   return state
 }
