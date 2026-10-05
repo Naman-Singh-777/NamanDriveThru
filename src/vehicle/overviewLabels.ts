@@ -24,14 +24,14 @@ export class OverviewLabels {
       css.pointerEvents = 'none'
       css.display = 'none'
       css.willChange = 'transform, opacity'
-      css.padding = '3px 9px'
+      css.padding = '5px 12px 4px 15px'
       css.borderRadius = '999px'
       css.border = '1px solid ' + tint
       css.background = 'rgba(8, 14, 28, 0.66)'
       css.boxShadow = '0 0 10px ' + tint
       css.color = '#eaf3ff'
-      css.font = '600 11px/1.2 system-ui, sans-serif'
-      css.letterSpacing = '0.16em'
+      css.font = '800 17px/1 "Big Shoulders Display", "Arial Narrow", Impact, sans-serif'
+      css.letterSpacing = '0.22em'
       css.whiteSpace = 'nowrap'
       el.setAttribute('aria-hidden', 'true')
       el.textContent = NAMES[def.id] ?? def.label.toUpperCase()
