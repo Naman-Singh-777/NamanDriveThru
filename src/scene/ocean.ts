@@ -1,5 +1,7 @@
 import * as THREE from 'three'
 import { NOISE_GLSL, sceneTime } from './glslCommon'
+import { SWELL_GLSL } from './swell'
+import { SHORE_GLSL, type ShoreSim } from './shoreSim'
 
 // Ocean water for the baked Ocean_Near mesh.
 //
@@ -89,7 +91,7 @@ vec2 oc_ripples(vec2 p, float fp) {
 }
 `
 
-export function applyOceanMaterial(mesh: THREE.Mesh, envMap: THREE.Texture | null): void {
+export function applyOceanMaterial(mesh: THREE.Mesh, envMap: THREE.Texture | null, shore: ShoreSim | null = null): void {
   const old = mesh.material as THREE.MeshStandardMaterial
   const mat = new THREE.MeshPhysicalMaterial({
     name: old.name || 'MAT_WATER',
@@ -106,9 +108,10 @@ export function applyOceanMaterial(mesh: THREE.Mesh, envMap: THREE.Texture | nul
   // envMapIntensity when it has its own envMap, so it is set explicitly here.)
   mat.envMap = envMap
   mat.envMapIntensity = 0.35
-  mat.customProgramCacheKey = () => 'MAT_WATER_OCEAN_V1'
+  mat.customProgramCacheKey = () => (shore ? 'MAT_WATER_OCEAN_V2_SHORE' : 'MAT_WATER_OCEAN_V2')
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = sceneTime
+    if (shore) Object.assign(shader.uniforms, shore.uniforms)
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec4 color_1;\nvarying vec3 vOcPos;\nvarying float vOcFoam;')
       .replace(
@@ -116,7 +119,7 @@ export function applyOceanMaterial(mesh: THREE.Mesh, envMap: THREE.Texture | nul
         '#include <begin_vertex>\nvOcPos = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvOcFoam = color_1.r;'
       )
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\n${OCEAN_GLSL}`)
+      .replace('#include <common>', `#include <common>\n${SWELL_GLSL}\n${shore ? SHORE_GLSL : ''}\n${OCEAN_GLSL}`)
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
@@ -125,9 +128,32 @@ export function applyOceanMaterial(mesh: THREE.Mesh, envMap: THREE.Texture | nul
         vec2 ocGrad; float ocCrest; float ocLost;
         oc_waves(ocP, ocFp, ocGrad, ocCrest, ocLost);
         ocGrad += oc_ripples(ocP, ocFp);
-        // whitecaps: baked foam channel x crest x a slow breakup noise, thinner with distance
+        // Long swell: seven deep-water waves that drift in and out of step (swell.ts). Their slope
+        // tilts the whole surface, so big moving bands of moon glint roll toward the rocks.
+        float swH; vec2 swG;
+        sw_eval(ocP, uTime, swH, swG);
+        ocGrad += swG * 1.8;
+        float swN = clamp(swH / 1.3, -1.0, 1.0);        // whitecaps: baked foam channel x crest x a slow breakup noise, thinner with distance
         float ocFoam = smoothstep(0.55, 0.85, vOcFoam) * smoothstep(0.55, 0.9, ocCrest) * (1.0 - smoothstep(30.0, 160.0, ocFp * 900.0));
         if (ocFoam > 0.002) ocFoam *= smoothstep(0.38, 0.7, bn_fbm(vec3(ocP * 0.45, uTime * 0.07), 3, 0.6));
+        // Foam rides the highest swell crests, in broken patches that drift with the wave group.
+        // Calm stretches between groups stay clean.
+        float swBreak = smoothstep(0.72, 1.0, swN) * smoothstep(0.5, 0.76, bn_fbm(vec3(ocP * 0.09 + vec2(uTime * 0.9, uTime * -0.6), uTime * 0.05), 3, 0.6));
+        ocFoam = max(ocFoam, swBreak * 0.6);
+        diffuseColor.rgb += vec3(0.003, 0.010, 0.012) * smoothstep(0.2, 1.0, swN); // light through thin crests
+${shore ? `
+        {
+          vec4 shSt; float shD;
+          if (shore_lookup(ocP, shSt, shD)) {
+            // Where the swell is running up the rock the water at its foot churns white: a thin
+            // lapping line all the time, a wide boiling band right after a strike.
+            float run = clamp((shSt.x - shSt.w) / 2.5, 0.0, 1.0);
+            float band = 2.2 + 6.0 * shSt.z + 3.0 * run;
+            float shn = bn_fbm(vec3(ocP * 0.55 + vec2(uTime * 0.5, uTime * -0.35), uTime * 0.3), 3, 0.6);
+            float lap = (1.0 - smoothstep(band * 0.3, band, shD)) * smoothstep(0.30, 0.62, shn + 0.5 * shSt.z + 0.35 * run);
+            ocFoam = max(ocFoam, lap * (0.55 + 0.4 * max(shSt.z, run)));
+          }
+        }` : ''}
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.52, 0.54, 0.56), ocFoam * 0.85);`
       )
       .replace(
