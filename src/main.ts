@@ -1,8 +1,7 @@
 import * as THREE from 'three'
 import RAPIER from '@dimforge/rapier3d-compat'
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { loadEnvironment } from './scene/environment'
-import { createSky } from './scene/sky'
+import { createSky, createNightEnvironment } from './scene/sky'
 import { createLighting } from './scene/lighting'
 import { buildStaticColliders, isCameraObstacle } from './collision/staticColliders'
 import { buildRoadBoundaries, buildJunctionBoundaries } from './collision/roadBoundaries'
@@ -57,22 +56,19 @@ async function main(): Promise<void> {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.outputColorSpace = THREE.SRGBColorSpace
-  renderer.toneMapping = THREE.ACESFilmicToneMapping
-  renderer.toneMappingExposure = 1.05
+  // The Blender file renders with the AgX view transform at +0.4 exposure (2^0.4 = 1.32).
+  renderer.toneMapping = THREE.AgXToneMapping
+  renderer.toneMappingExposure = 1.32
   renderer.shadowMap.enabled = true
   renderer.shadowMap.type = THREE.PCFSoftShadowMap
 
   const scene = new THREE.Scene()
   const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.5, 12000)
 
-  // Neutral PBR environment (official three.js RoomEnvironment helper) so metallic/
-  // glossy materials (car paint, chrome trim, rusted steel, glass) get a believable
-  // ambient specular response instead of rendering flat black — without an env map,
-  // MeshStandardMaterial's specular/IBL term is simply absent for these surfaces,
-  // which was a large part of why everything read as near-black.
-  const pmremGenerator = new THREE.PMREMGenerator(renderer)
-  scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture
-  pmremGenerator.dispose()
+  // Image-based light built from the night sky itself (see sky.ts), so metallic and glossy
+  // materials (car paint, steel, glass, the water) reflect the same navy sky and moon the
+  // player sees, instead of the grey studio room the old RoomEnvironment gave them.
+  scene.environment = createNightEnvironment(renderer)
 
   const sky = createSky(scene)
   createLighting(scene)
@@ -568,7 +564,7 @@ async function main(): Promise<void> {
       camera.position.z += (Math.random() - 0.5) * 2 * mag
     }
 
-    sky.update(clock.elapsedTime)
+    sky.update(clock.elapsedTime, camera)
 
     // WEB-PHASE-4: checkpoint pads always animate/update (so their glass
     // shader keeps running even while the overlay is open), but the floating
