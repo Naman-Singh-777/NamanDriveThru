@@ -18,7 +18,7 @@ import { OverviewLabels } from './vehicle/overviewLabels'
 import { createCheckpoints, updateCheckpoints, triggerActivation, type Checkpoint, type CheckpointDef, type CheckpointId } from './vehicle/checkpoint'
 import { playActivationChime } from './vehicle/checkpointAudio'
 import { addRoadEndCaps, type RoadEndCapDef } from './scene/roadEndCaps'
-import { initOverlay, requestOpenOverlay, isOverlayOpen, isOverlayBusy } from './overlay'
+import { initOverlay, requestOpenOverlay, isOverlayOpen, isOverlayBusy, preloadOverlayData, warmTrackDurations } from './overlay'
 import { initFullscreen } from './fullscreen'
 import { isTutorialActive, markLoaded, waitForStart } from './loading/tutorial'
 import { initAchievements, registerVisit, hasVisited, notifyOverlayClosed } from './vehicle/achievements'
@@ -34,6 +34,8 @@ initOwnerBypassToggle()
 if (!isOwnerBypassOn()) initDeterrence()
 // Fullscreen from the first key press or click, left again with three Escapes.
 initFullscreen(isOverlayBusy)
+// Playlists, covers and the GitHub avatar start downloading now, alongside the environment.
+preloadOverlayData()
 
 const loadingEl = document.getElementById('loading')!
 const loadingFill = document.getElementById('loading-fill')!
@@ -475,6 +477,7 @@ async function main(): Promise<void> {
   // loading screen does not stall on shader compilation, then wait for SKIP TUTORIAL / START.
   renderer.render(scene, camera)
   markLoaded()
+  warmTrackDurations() // track lengths load while the tutorial is being read
   await waitForStart()
   loadingEl.style.display = 'none'
   // WEB-PHASE-4 REDO Phase 13: on-screen touch controls (D-pad/brake/shortcut

@@ -5,6 +5,7 @@
 import './wizard.css'
 import './campfire.css'
 import './loading.css'
+import './extras.css'
 
 const STEP_COUNT = 4
 
@@ -99,6 +100,13 @@ function updateChrome(): void {
         : 'The world is ready. Skip any time.'
   }
   stepsEl?.scrollTo({ top: 0 })
+  requestAnimationFrame(updateScrollHint)
+}
+
+// A soft fade at the bottom of the step list while there is more to scroll to.
+function updateScrollHint(): void {
+  if (!stepsEl) return
+  stepsEl.classList.toggle('has-more', stepsEl.scrollHeight - stepsEl.scrollTop - stepsEl.clientHeight > 6)
 }
 
 function goNext(): void {
@@ -116,6 +124,7 @@ function fit(): void {
   const h = stage.clientHeight - action.offsetHeight - 48
   const k = Math.max(0.3, Math.min(1.5, Math.min(w / 640, h / 480)))
   stage.style.setProperty('--k', k.toFixed(4))
+  updateScrollHint()
   // the step demo box (and the supplied maze loaders inside it) follow the viewport height
   const dh = window.innerHeight <= 520 ? 84 : Math.max(104, Math.min(180, window.innerHeight * 0.21))
   root?.style.setProperty('--dh', `${dh.toFixed(0)}px`)
@@ -212,6 +221,27 @@ function steam(to: { x: number; y: number; w: number; h: number }): void {
   }
 }
 
+// The shapes always fall with the fire. The supplied loop only drops them in one window of its 10 seconds,
+// so on a press outside that window they would keep hovering over a dead fire. Freeze each one where it is
+// and let it fall to the spot the loop itself lands them on.
+function dropShapes(scope: HTMLElement): void {
+  const rest = 'translateY(0px) rotate(-360deg)'
+  scope.querySelectorAll<HTMLElement>('.objects .square, .objects .circle, .objects .triangle').forEach((el, i) => {
+    const now = getComputedStyle(el).transform
+    el.style.animation = 'none'
+    el.style.transform = rest
+    el.animate(
+      [
+        { transform: now === 'none' ? rest : now, offset: 0, easing: 'cubic-bezier(0.5, 0, 0.9, 0.6)' },
+        { transform: rest, offset: 0.72, easing: 'ease-out' },
+        { transform: 'translateY(-9px) rotate(-360deg)', offset: 0.86, easing: 'ease-in' },
+        { transform: rest, offset: 1 },
+      ],
+      { duration: 700, delay: i * 90, fill: 'both' },
+    )
+  })
+}
+
 async function launch(): Promise<void> {
   if (!root || launched || !loaded) return
   launched = true
@@ -224,6 +254,7 @@ async function launch(): Promise<void> {
     spitWater(btn.getBoundingClientRect(), fire)
     await sleep(520)
     root.classList.add('is-dousing')
+    dropShapes(root)
     const glow = root.querySelectorAll<HTMLElement>('.ld-glow, .ld-firelight')
     glow.forEach((g) => g.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 1300, delay: 250, easing: 'ease-in', fill: 'forwards' }))
     await sleep(380)
@@ -251,5 +282,6 @@ if (root && stage && sceneBox && action && skip && next) {
   updateChrome()
   next.addEventListener('click', goNext)
   skip.addEventListener('click', () => void launch())
+  stepsEl?.addEventListener('scroll', updateScrollHint, { passive: true })
   if (!isTouch) next.focus({ preventScroll: true })
 }

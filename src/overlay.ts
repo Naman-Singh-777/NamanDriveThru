@@ -565,3 +565,41 @@ export function initOverlay(onClose: (closedId: CheckpointId) => void): void {
     if (e.code === 'Escape' && isOverlayOpen()) requestCloseOverlay()
   })
 }
+
+// Everything the Platform and Port menus need is fetched while the world is still loading, so the
+// playlists, covers, durations and the GitHub avatar are already there when the car reaches a
+// checkpoint. Nothing here opens or changes a menu.
+const warmed: (HTMLImageElement | undefined)[] = []
+export function preloadOverlayData(): void {
+  const ghUser = externalLinks.githubUsername.trim()
+  if (ghUser) {
+    const avatar = new Image()
+    avatar.decoding = 'async'
+    avatar.src = `https://github.com/${ghUser}.png?size=64`
+    warmed.push(avatar)
+  }
+  void loadManifest().then((m) => {
+    for (const p of m.playlists) {
+      const cover = coverUrl(p)
+      if (!cover) continue
+      const img = new Image()
+      img.decoding = 'async'
+      img.src = cover
+      warmed.push(img)
+    }
+  })
+}
+
+// Track lengths are read from each file's header, which is slow for files that keep it at the end. Doing
+// it right after the world has loaded (while the tutorial is on screen) means the track list already
+// shows every length. Two at a time, so it never competes with playback.
+export function warmTrackDurations(): void {
+  void loadManifest().then(async (m) => {
+    const urls = m.playlists.flatMap((p) => p.tracks.map((t) => trackUrl(p, t)))
+    let next = 0
+    const worker = async (): Promise<void> => {
+      while (next < urls.length) await probeDuration(urls[next++])
+    }
+    await Promise.all([worker(), worker()])
+  })
+}
