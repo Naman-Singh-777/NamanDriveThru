@@ -83,7 +83,45 @@ void pm_surface(int kind, vec3 g, out vec3 col, out float rough) {
     rough = 0.25;
   }
 }
+
+// ---- concrete surface detail (world space, so the grain has the same size on every object) ----
+varying vec3 vPmW;
+float pm_vis(float size, float fp) { return smoothstep(7.0, 18.0, size / max(fp, 1e-4)); }
+float pm_dl(float x, float s) { float a = mod(x, s); return min(a, s - a); }
+// hm: relief in metres, mul: albedo multiplier (mean about 1), rm: roughness multiplier
+void pm_concrete(vec3 w, vec3 wn, float fp, out float hm, out float mul, out float rm) {
+  float up = abs(wn.y);
+  float m1 = bn_fbm(w / 11.0, 3, 0.5);          // big pours: lighter and darker clouds
+  float m2 = bn_vnoise(w / 2.6 + 4.0);
+  float m3 = bn_vnoise(w / 0.9 + 8.0);
+  float v2 = pm_vis(2.6, fp);
+  float v3 = pm_vis(0.9, fp);
+  float pit = smoothstep(0.80, 0.92, bn_vnoise(w / 0.38 + 2.0)) * pm_vis(0.38, fp);   // air-bubble pits
+  float grain = (bn_vnoise(w / 0.13 + 6.0) - 0.5) * pm_vis(0.13, fp);               // aggregate
+  // formwork joints: panels on walls, expansion joints on floors
+  vec2 dir = vec2(-wn.z, wn.x);
+  float t = dot(w.xz, dir / max(length(dir), 1e-3));
+  float jd = up < 0.6 ? min(pm_dl(w.y, 3.4), pm_dl(t, 5.6)) : min(pm_dl(w.x, 7.5), pm_dl(w.z, 7.5));
+  float gw = max(0.045, fp * 1.1);
+  float groove = (1.0 - smoothstep(gw * 0.4, gw, jd)) * smoothstep(5.0, 12.0, 3.4 / max(fp, 1e-4));
+  // rain streaks running down walls
+  float streak = up < 0.6 ? smoothstep(0.58, 0.85, bn_vnoise(vec3(t / 1.4, w.y / 16.0, 3.0))) * pm_vis(1.4, fp) : 0.0;
+  hm = -groove * 0.05 - pit * 0.03 + grain * 0.015 + (m3 - 0.5) * 0.02 * v3;
+  mul = (1.0 + (m1 - 0.5) * 0.55 + (m2 - 0.5) * 0.3 * v2 + (m3 - 0.5) * 0.22 * v3 + grain * 0.35 - pit * 0.45 - groove * 0.4 - streak * 0.22) * 1.05;
+  rm = 1.0 + (m2 - 0.5) * 0.4 + pit * 0.3 + streak * 0.1;
+}
+vec3 pm_bump(vec3 N, vec3 viewPos, float H, float strength, float faceDir) {
+  vec3 sx = dFdx(viewPos);
+  vec3 sy = dFdy(viewPos);
+  vec3 r1 = cross(sy, N);
+  vec3 r2 = cross(N, sx);
+  float det = dot(sx, r1) * faceDir;
+  vec3 grad = sign(det) * (dFdx(H) * r1 + dFdy(H) * r2);
+  return normalize(abs(det) * N - strength * grad);
+}
 `
+
+const CONCRETE_KINDS = new Set<Kind>(['concrete', 'quay', 'pillar', 'wetpad'])
 
 const KIND_INDEX: Record<Kind, number> = { concrete: 0, quay: 1, rust: 2, bronze: 3, pillar: 4, wetpad: 5, facade: 6 }
 
@@ -143,11 +181,11 @@ function patch(mat: THREE.MeshStandardMaterial, kind: Kind): void {
   const fb = FALLBACK[kind]
   mat.color.setRGB(fb[0], fb[1], fb[2])
   mat.roughness = fb[3]
-  mat.customProgramCacheKey = () => `PROC_${kind}_V1`
+  mat.customProgramCacheKey = () => `PROC_${kind}_V2`
   mat.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec3 aGen;\nvarying vec3 vGen;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGen = aGen;')
+      .replace('#include <common>', '#include <common>\nattribute vec3 aGen;\nvarying vec3 vGen;\nvarying vec3 vPmW;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGen = aGen;\nvPmW = (modelMatrix * vec4(transformed, 1.0)).xyz;')
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>\nvarying vec3 vGen;\n${GLSL}`)
       .replace(
@@ -155,9 +193,18 @@ function patch(mat: THREE.MeshStandardMaterial, kind: Kind): void {
         `#include <color_fragment>
         vec3 pmCol; float pmRough;
         pm_surface(${KIND_INDEX[kind]}, vGen, pmCol, pmRough);
-        diffuseColor.rgb = pmCol;`
+        diffuseColor.rgb = pmCol;
+        float pmHm = 0.0;
+        float pmRM = 1.0;
+        ${CONCRETE_KINDS.has(kind) ? `{
+          float pmMul;
+          float pmFp = max(length(dFdx(vPmW)), length(dFdy(vPmW)));
+          pm_concrete(vPmW, normalize(inverseTransformDirection(normalize(vNormal), viewMatrix)), pmFp, pmHm, pmMul, pmRM);
+          diffuseColor.rgb *= clamp(pmMul, 0.4, 1.6);
+        }` : ''}`
       )
-      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>\nroughnessFactor = pmRough;`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>\nroughnessFactor = pmRough * clamp(pmRM, 0.5, 1.5);`)
+      .replace('#include <emissivemap_fragment>', `${CONCRETE_KINDS.has(kind) ? 'normal = pm_bump(normal, -vViewPosition, pmHm, 6.0, faceDirection);\n        ' : ''}#include <emissivemap_fragment>`)
   }
   mat.needsUpdate = true
 }

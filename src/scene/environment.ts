@@ -5,6 +5,8 @@ import { applyCityRailFix } from './cityRailFix'
 import { applyOceanMaterial } from './ocean'
 import { applyProceduralMaterials } from './proceduralMaterials'
 import { applyBuildingLights } from './buildingLights'
+import { buildShoreSim } from './shoreSim'
+import { applyRockOverlay } from './rockDetail'
 
 // WEB-FIX-07: MAT_CLIFF/MAT_CLIFF.002 (76 exported meshes -- the dominant terrain
 // material) are procedural Blender node materials, confirmed by read-only inspection
@@ -178,6 +180,11 @@ export function loadEnvironment(
         // post (see cityRailFix.ts). Same load-time, graph-only pattern.
         applyCityRailFix(root)
 
+        // Rock wash simulation (shoreSim.ts): swell running up the rocks, spray, foam. It reads the
+        // rock meshes only, and feeds the water and rock materials below plus one spray object.
+        const shore = buildShoreSim(root)
+        if (shore) scene.add(shore.spray)
+
         // MAT_WATER exported with no base colour, so it defaulted to flat white. It is rebuilt as
         // real ocean water (see ocean.ts): Blender's body colour, IOR 1.333, animated waves,
         // foam. Material only, the baked ocean mesh itself is untouched.
@@ -186,7 +193,7 @@ export function loadEnvironment(
           if (!mesh.isMesh || Array.isArray(mesh.material)) return
           const mat = mesh.material as THREE.MeshStandardMaterial | undefined
           if (!mat) return
-          if (/ocean|water/i.test(obj.name) || /water/i.test(mat.name ?? '')) applyOceanMaterial(mesh, scene.environment)
+          if (/ocean|water/i.test(obj.name) || /water/i.test(mat.name ?? '')) applyOceanMaterial(mesh, scene.environment, shore)
         })
 
         // BodyPaint (the car's main paint shell) exported with only metallicFactor=0
@@ -235,6 +242,26 @@ export function loadEnvironment(
         })
         applyProceduralMaterials(root)
 
+        // Extra rock texture and the wet band from the wash simulation, on top of the existing rock
+        // colours: the cliff ramp above, and the flat terrain / headland colours.
+        const ROCK_OVERLAY: Record<string, string> = {
+          'MAT_CLIFF': 'ROCK_OVERLAY_CLIFF_V1',
+          'MAT_CLIFF.002': 'ROCK_OVERLAY_CLIFF2_V1',
+          'MAT_TERRAIN.004': 'ROCK_OVERLAY_TERRAIN_V1',
+          'MAT_HEADLAND_ROCK_PORT': 'ROCK_OVERLAY_HEADLAND_V1'
+        }
+        const overlaid = new Set<THREE.Material>()
+        root.traverse((obj) => {
+          const mesh = obj as THREE.Mesh
+          if (!mesh.isMesh || !mesh.material) return
+          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+          for (const m of mats) {
+            const key = ROCK_OVERLAY[m.name]
+            if (!key || overlaid.has(m)) continue
+            overlaid.add(m)
+            applyRockOverlay(m as THREE.MeshStandardMaterial, shore, key)
+          }
+        })
         // Windows that switch on and off over time (see buildingLights.ts).
         applyBuildingLights(root)
 
