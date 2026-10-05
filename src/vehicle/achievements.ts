@@ -57,6 +57,8 @@ interface ShortcutMeta {
   achievementTitle: string
   achievementSubtitle: string
   keyPopupText: string
+  // inner markup of a 24x24 outline svg (stroke styled in index.html)
+  icon: string
 }
 
 // Copy run through the /humanizer skill per the user's explicit request --
@@ -67,25 +69,29 @@ const META: Record<CheckpointId, ShortcutMeta> = {
     chipId: 'shortcut-chip-platform',
     achievementTitle: 'Caught You Snooping',
     achievementSubtitle: 'You found the music. Of course you want more now.',
-    keyPopupText: 'Press M anytime to jump back into Music.'
+    keyPopupText: 'Press M anytime to jump back into Music.',
+    icon: '<path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>'
   },
   port: {
     chipId: 'shortcut-chip-port',
     achievementTitle: 'Now You Want The Code Too',
     achievementSubtitle: "One repo in and you're already hooked.",
-    keyPopupText: 'Press G anytime to reopen Projects.'
+    keyPopupText: 'Press G anytime to reopen Projects.',
+    icon: '<path d="M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/>'
   },
   city: {
     chipId: 'shortcut-chip-city',
     achievementTitle: "Okay, You're Fully Invested",
     achievementSubtitle: 'Found my socials. No quitting now.',
-    keyPopupText: 'Press C anytime to reopen Connect.'
+    keyPopupText: 'Press C anytime to reopen Connect.',
+    icon: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>'
   }
 }
 
 let toastEl: HTMLElement
 let toastTitleEl: HTMLElement
 let toastSubEl: HTMLElement
+let toastIconEl: HTMLElement
 let popupEl: HTMLElement
 let popupTextEl: HTMLElement
 let toastTimer: number | undefined
@@ -186,6 +192,7 @@ let popupLetters: HTMLElement[] = []
 function showToast(meta: ShortcutMeta): void {
   if (toastTimer !== undefined) window.clearTimeout(toastTimer)
   if (toastHideTimer !== undefined) window.clearTimeout(toastHideTimer)
+  toastIconEl.innerHTML = '<svg viewBox="0 0 24 24" focusable="false">' + meta.icon + '</svg>'
   toastLetters = [...smokeText(toastTitleEl, meta.achievementTitle), ...smokeText(toastSubEl, meta.achievementSubtitle)]
   toastEl.style.display = 'flex'
   void toastEl.offsetWidth // force a layout flush so display:none -> flex doesn't eat the transition
@@ -273,6 +280,7 @@ export function initAchievements(onActivate: (id: CheckpointId) => void): void {
   toastEl = document.getElementById('achievement-toast')!
   toastTitleEl = document.getElementById('achievement-toast-title')!
   toastSubEl = document.getElementById('achievement-toast-subtitle')!
+  toastIconEl = document.getElementById('achievement-toast-icon')!
   popupEl = document.getElementById('key-unlock-popup')!
   popupTextEl = document.getElementById('key-unlock-popup-text')!
 

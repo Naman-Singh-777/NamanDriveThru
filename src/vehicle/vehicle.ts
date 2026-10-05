@@ -393,8 +393,13 @@ export class Vehicle {
     // front wheels: steer + no drive torque (rear-wheel drive, matches a mid/rear-engine car)
     this.controller.setWheelSteering(0, this.steerAngle)
     this.controller.setWheelSteering(1, this.steerAngle)
-    this.controller.setWheelEngineForce(0, 0)
-    this.controller.setWheelEngineForce(1, 0)
+    // If a bump or collision has left both rear wheels off the ground (the chassis can't pitch,
+    // so it can end up propped on the front axle), the front wheels take the drive instead.
+    // Otherwise the car would sit there and ignore both forward and reverse.
+    const rearGrounded = this.controller.wheelIsInContact(2) || this.controller.wheelIsInContact(3)
+    const frontDrive = rearGrounded ? 0 : engineForce
+    this.controller.setWheelEngineForce(0, frontDrive)
+    this.controller.setWheelEngineForce(1, frontDrive)
     this.controller.setWheelBrake(0, brake)
     this.controller.setWheelBrake(1, brake)
 
