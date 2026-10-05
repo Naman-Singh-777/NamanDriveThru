@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { applyPortRailFix } from './portRailFix'
+import { applyCityRailFix } from './cityRailFix'
 
 // WEB-FIX-07: MAT_CLIFF/MAT_CLIFF.002 (76 exported meshes -- the dominant terrain
 // material) are procedural Blender node materials, confirmed by read-only inspection
@@ -161,6 +162,10 @@ export function loadEnvironment(
         // lamps (see portRailFix.ts). Runs after the light strip above so the lamp
         // lights are already gone and only the lamp meshes move.
         applyPortRailFix(root)
+
+        // City perimeter railing: seat the rails on the deck and put every lamp on a
+        // post (see cityRailFix.ts). Same load-time, graph-only pattern.
+        applyCityRailFix(root)
 
         // MAT_WATER exported with no base color (Blender's procedural ocean shader
         // can't be baked to a single glTF value), which left it defaulting to flat

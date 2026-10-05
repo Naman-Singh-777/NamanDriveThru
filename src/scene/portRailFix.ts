@@ -18,8 +18,11 @@ import * as THREE from 'three'
 //     beyond, no road/crane/berth there, the run just stops
 //   - the NE apron corner (north run stopped 6.5 short, east run 2.5 short)
 //   - the lower quay's outer west/east edges and their two outer corners
-// Deliberately NOT touched: the road entrance on the east edge, the two crane
-// openings on the north edge, and everything facing the ship berth.
+//   - the two one-bay openings on the apron's north edge under the crane hoist
+//     blocks (x -813..-787 and x -675..-650): both already had end posts, they
+//     just had no bars between them; filled at the owner's request
+// Deliberately NOT touched: the road entrance on the east edge and everything
+// facing the ship berth.
 //
 // The four corner lamps sit at the midpoint of each corner's post pair but
 // were mounted 8.8 units too low, so their poles ran through the posts. The
@@ -40,6 +43,9 @@ const RUNS: RunSpec[] = [
   { id: 'S_Bay2', axis: 'x', a: -656, b: -640, line: 48.5, dy: APRON_DY },
   // apron, north edge (z = -124.5): seam between Upper_A_West and Upper_A
   { id: 'N_Seam', axis: 'x', a: -845.73, b: -843, line: -124.5, dy: APRON_DY },
+  // apron, north edge: the two crane bays (end posts already exist at -813/-787 and -675/-650)
+  { id: 'N_CraneA', axis: 'x', a: -813, b: -787, line: -124.5, dy: APRON_DY },
+  { id: 'N_CraneB', axis: 'x', a: -675, b: -650, line: -124.5, dy: APRON_DY },
   // apron NE corner, same post-pair pattern as the SE corner mirrored
   { id: 'NE_East', axis: 'z', a: -124, b: -122, line: -625.5, dy: APRON_DY },
   { id: 'NE_North', axis: 'x', a: -632, b: -627, line: -124.5, dy: APRON_DY },
