@@ -5,22 +5,13 @@ import type { InputState } from './controls'
 
 const MAX_ENGINE_FORCE = 3200
 const MAX_BRAKE_FORCE = 60
-// Steering model (replaces the old exponential lerp + fixed lock):
-//  - MAX_STEER: full road-wheel lock at a standstill, ~31.5 deg (real cars: 30-35 deg).
-//  - At speed the lock is limited by tyre grip, exactly the kinematic rule real
-//    steering follows: lateral accel = v^2 / R = v^2 * tan(delta) / wheelbase must stay
-//    under a grip budget, so delta_max = atan(wheelbase * budget / v^2). World gravity is
-//    24.5 (see main.ts); the budget is 2.2 g of that (the world is scaled up, and a lower
-//    budget left no usable steering at speed). Full lock below ~32 u/s, ~16 deg at 45 u/s,
-//    ~7 deg at the 70 u/s top speed.
-//  - The wheel is turned by a "driver" at a limited hand speed (a real steering wheel
-//    takes ~1 s to go from centre to lock), soft-landing onto the target, and it
-//    self-centres about twice as fast when released (self-aligning torque).
-const MAX_STEER = 0.55
-const GRIP_ACCEL = 2.2 * 24.5
-const STEER_RATE_IN = 0.8 // rad/s, wheel turned into a corner
-const STEER_RATE_OUT = 1.2 // rad/s, wheel returning toward centre / unwinding
-const STEER_SOFT = 8 // 1/s, eases the wheel onto its target instead of stopping dead
+const MAX_STEER = 0.52
+// WEB-PHASE-4 REDO Phase 16: slightly reduced left/right steer sensitivity --
+// how fast steerAngle ramps toward targetSteer each frame in applyControls()
+// below (both into a turn and back to center). 6.0 -> 5.0 -> 4.5, and the lock
+// angle 0.55 -> 0.52: the original fixed-lock, exponential-ramp steering with
+// only a very slight softening (no speed-based limiting).
+const STEER_LERP = 4.5
 // Released-throttle (coast) brake: engine braking + rolling resistance, ~20 m/s^2 plus drag.
 const COAST_BRAKE_FORCE = 15
 // Pedal braking: W/S pressed AGAINST the direction of travel is a brake, not a
@@ -48,7 +39,6 @@ export class Vehicle {
   readonly controller: RAPIER.DynamicRayCastVehicleController
   readonly wheelRadius: number
   private steerAngle = 0
-  private wheelbase = 0
   private wheelMeshes: THREE.Object3D[]
   private wheelRadii: number[]
   private localWheelPositions: THREE.Vector3[]
@@ -404,19 +394,8 @@ export class Vehicle {
     const q = this.body.rotation()
     const vF =
       lv.x * 2 * (q.x * q.z + q.w * q.y) + lv.y * 2 * (q.y * q.z - q.w * q.x) + lv.z * (1 - 2 * (q.x * q.x + q.y * q.y))
-    if (this.wheelbase === 0) {
-      this.wheelbase = Math.abs(
-        this.controller.wheelChassisConnectionPointCs(0)!.z - this.controller.wheelChassisConnectionPointCs(2)!.z,
-      )
-    }
-    const speed = Math.abs(vF)
-    const steerLimit = speed < 1 ? MAX_STEER : Math.min(MAX_STEER, Math.atan((this.wheelbase * GRIP_ACCEL) / (speed * speed)))
-    const targetSteer = (input.left ? steerLimit : 0) - (input.right ? steerLimit : 0)
-    // turning further from centre = driver's hand speed; anything toward centre = self-centring
-    const intoTurn = Math.abs(targetSteer) > Math.abs(this.steerAngle) && targetSteer * this.steerAngle >= 0
-    const maxStep = (intoTurn ? STEER_RATE_IN : STEER_RATE_OUT) * dt
-    const wanted = (targetSteer - this.steerAngle) * Math.min(1, STEER_SOFT * dt)
-    this.steerAngle += Math.max(-maxStep, Math.min(maxStep, wanted))
+    const targetSteer = (input.left ? MAX_STEER : 0) - (input.right ? MAX_STEER : 0)
+    this.steerAngle += (targetSteer - this.steerAngle) * Math.min(1, STEER_LERP * dt)
 
     // Spacebar: dedicated hard brake -- overrides throttle/reverse (real cars
     // don't apply engine force while braking) and applies full MAX_BRAKE_FORCE to
