@@ -30,7 +30,10 @@ const REVERSE_MAX_SPEED = 14 // m/s: reversing top speed (engine fades out towar
 interface VisualSnapshot {
   rootPos: THREE.Vector3
   rootQuat: THREE.Quaternion
-  wheelWorldPos: THREE.Vector3[]
+  // World position of each wheel's TRUE geometric centre (the hub), i.e. the point that is pinned to the
+  // suspension attachment. The mesh origin is derived from it at render time (applyVisualState), after the
+  // hub and the orientation have been interpolated, so the hub itself stays on its straight path.
+  wheelHubPos: THREE.Vector3[]
   wheelWorldQuat: THREE.Quaternion[]
 }
 
@@ -384,6 +387,22 @@ export class Vehicle {
     return new THREE.Quaternion(r.x, r.y, r.z, r.w)
   }
 
+  // Presentation-only pose of the chassis centre as DRAWN this frame (the interpolated state
+  // written by applyVisualState()). The chase camera follows this instead of the raw physics pose:
+  // the physics pose only changes in 1/60 s steps (0, 1 or 2+ per rendered frame), so a camera
+  // chasing it moved in uneven jumps against the smoothly drawn car and the car crept back and
+  // forth on screen. Never fed back into physics; falls back to the physics pose until the first
+  // frame has been drawn.
+  private visualPos = new THREE.Vector3()
+  private visualQuat = new THREE.Quaternion()
+  private hasVisualPose = false
+  get visualPosition(): THREE.Vector3 {
+    return this.hasVisualPose ? this.visualPos.clone() : this.position
+  }
+  get visualQuaternion(): THREE.Quaternion {
+    return this.hasVisualPose ? this.visualQuat.clone() : this.quaternion
+  }
+
   // Sets inputs and runs the raycast/suspension simulation for this step. Must be
   // called BEFORE world.step() — Rapier's vehicle controller applies forces here
   // that world.step() then integrates.
@@ -582,7 +601,7 @@ export class Vehicle {
     const VISUAL_FRONT_OFFSET = 1.1163
     const VISUAL_REAR_OFFSET = 0.8912
 
-    const wheelWorldPos: THREE.Vector3[] = []
+    const wheelHubPos: THREE.Vector3[] = []
     const wheelWorldQuat: THREE.Quaternion[] = []
 
     for (let i = 0; i < 4; i++) {
@@ -592,7 +611,7 @@ export class Vehicle {
         // computed pose (or, if none yet, the rest position) so the arrays below
         // always have 4 entries.
         const prevSnap = this.visCurr
-        wheelWorldPos.push(prevSnap ? prevSnap.wheelWorldPos[i].clone() : bodyPos.clone())
+        wheelHubPos.push(prevSnap ? prevSnap.wheelHubPos[i].clone() : bodyPos.clone())
         wheelWorldQuat.push(prevSnap ? prevSnap.wheelWorldQuat[i].clone() : bodyQuat.clone())
         continue
       }
@@ -622,23 +641,20 @@ export class Vehicle {
       const spinQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), rotation)
       const wheelLocalQuat = steerQuat.clone().multiply(spinQuat).multiply(this.wheelRestQuat[i])
 
-      const worldPos = local.clone().applyQuaternion(bodyQuat).add(bodyPos)
+      // The wheel's TRUE geometric centre (hub) at this step. WEB-FIX-11d/11f pins this point to
+      // the attachment/suspension point; that pin (mesh origin = hub minus the rotated centre
+      // offset, full runtime world scale applied) is now applied in applyVisualState() AFTER
+      // interpolation. Interpolating the mesh origin instead let the hub swing by up to
+      // |offset| * (1 - cos(rollStep / 2)) between physics steps (a 60 Hz tyre wobble that grows
+      // with speed), because the origin orbits the hub as the wheel spins.
+      const hubPos = local.clone().applyQuaternion(bodyQuat).add(bodyPos)
       const worldQuat = bodyQuat.clone().multiply(wheelLocalQuat)
 
-      // WEB-FIX-11d/11f: pin the wheel's TRUE geometric center (full runtime
-      // world scale applied) to the attachment/suspension point, exactly as
-      // before this fix -- position-only, does not touch worldQuat.
-      const centerOffsetWorld = this.wheelGeometryCenter[i]
-        .clone()
-        .multiply(this.wheelGeometryWorldScale[i])
-        .applyQuaternion(worldQuat)
-      worldPos.sub(centerOffsetWorld)
-
-      wheelWorldPos.push(worldPos)
+      wheelHubPos.push(hubPos)
       wheelWorldQuat.push(worldQuat)
     }
 
-    const snapshot: VisualSnapshot = { rootPos, rootQuat, wheelWorldPos, wheelWorldQuat }
+    const snapshot: VisualSnapshot = { rootPos, rootQuat, wheelHubPos, wheelWorldQuat }
     this.visPrev = this.visCurr ?? snapshot
     this.visCurr = snapshot
   }
@@ -665,10 +681,15 @@ export class Vehicle {
     this.env.vehicleRoot.position.copy(rootPos)
     this.env.vehicleRoot.quaternion.copy(rootQuat)
     this.env.vehicleRoot.updateMatrixWorld(true)
+    // The pose actually drawn this frame (body-centre form), for the chase camera.
+    this.visualQuat.copy(rootQuat)
+    this.visualPos.copy(rootPos).add(this.rootToCenterOffset(rootQuat))
+    this.hasVisualPose = true
 
     for (let i = 0; i < 4; i++) {
-      const worldPos = prev.wheelWorldPos[i].clone().lerp(curr.wheelWorldPos[i], a)
       const worldQuat = prev.wheelWorldQuat[i].clone().slerp(curr.wheelWorldQuat[i], a)
+      const worldPos = prev.wheelHubPos[i].clone().lerp(curr.wheelHubPos[i], a)
+      worldPos.sub(this.wheelGeometryCenter[i].clone().multiply(this.wheelGeometryWorldScale[i]).applyQuaternion(worldQuat))
 
       const mesh = this.wheelMeshes[i]
       const parent = mesh.parent!
