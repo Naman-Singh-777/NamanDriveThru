@@ -277,6 +277,62 @@ function lowerArms(scope: HTMLElement): void {
   })
 }
 
+// After the fire is out the wizard lets out a tired sigh, as if it happens every single time: he
+// breathes in and puffs his chest out, then breathes out long and slow, slumping, head drooping toward
+// the dead fire, with a soft cloud of breath drifting that way. Everything is frozen where it is and
+// eased with the Web Animations API, same technique as lowerArms().
+function sigh(scope: HTMLElement): void {
+  const body = scope.querySelector<HTMLElement>('.wizard .body')
+  const head = scope.querySelector<HTMLElement>('.wizard .head')
+  if (!body || !head) return
+  const IN = 650
+  const OUT = 950
+  const total = IN + OUT
+  // head: freeze the casting loop where it is, then lift with the breath and sink with the sigh
+  const now = getComputedStyle(head).transform
+  head.style.animation = 'none'
+  head.animate(
+    [
+      { transform: now === 'none' ? 'rotate(0deg)' : now, offset: 0, easing: 'ease-in-out' },
+      { transform: 'translateY(-5px) rotate(1deg)', offset: IN / total, easing: 'ease-in-out' },
+      { transform: 'translateY(6px) rotate(-9deg)', offset: 1 },
+    ],
+    { duration: total, fill: 'both' },
+  )
+  // chest: the robe swells on the in-breath, then settles a touch lower than it started
+  body.style.transformOrigin = '50% 100%'
+  body.animate(
+    [
+      { transform: 'scale(1, 1)', offset: 0, easing: 'ease-out' },
+      { transform: 'scale(1.12, 1.05)', offset: IN / total, easing: 'ease-in-out' },
+      { transform: 'scale(0.97, 0.965)', offset: 1 },
+    ],
+    { duration: total, fill: 'both' },
+  )
+  // breath: a few soft clouds leave his mouth on the out-breath and drift toward the fire
+  const face = scope.querySelector('.wizard .head .face')?.getBoundingClientRect()
+  if (!face) return
+  const x0 = face.left + 4
+  const y0 = face.top + face.height * 0.9
+  for (let i = 0; i < 4; i++) {
+    const puff = document.createElement('div')
+    puff.className = 'ld-puff'
+    document.body.appendChild(puff)
+    const dx = -(46 + i * 22 + Math.random() * 14)
+    const dy = 8 + i * 5 + Math.random() * 8
+    const s0 = 0.28 + i * 0.05
+    const s1 = 0.75 + i * 0.22
+    const anim = puff.animate(
+      [
+        { transform: `translate(${x0 - 32}px, ${y0 - 32}px) scale(${s0})`, opacity: 0 },
+        { transform: `translate(${x0 - 32 + dx * 0.4}px, ${y0 - 32 + dy * 0.4}px) scale(${(s0 + s1) / 2})`, opacity: 0.8, offset: 0.3 },
+        { transform: `translate(${x0 - 32 + dx}px, ${y0 - 32 + dy}px) scale(${s1})`, opacity: 0 },
+      ],
+      { duration: 1250 + i * 120, delay: IN + i * 110, easing: 'ease-out', fill: 'both' },
+    )
+    anim.onfinish = () => puff.remove()
+  }
+}
 async function launch(): Promise<void> {
   if (!root || launched || !loaded) return
   launched = true
@@ -296,7 +352,9 @@ async function launch(): Promise<void> {
     await sleep(380)
     btn.classList.add('is-spent')
     steam(fire)
-    await sleep(1500)
+    await sleep(700)
+    sigh(root) // fire is out and his arms are down: breathe in, puff the chest, sigh it out
+    await sleep(1400)
   } else {
     root.classList.add('is-dousing')
     await sleep(250)

@@ -489,6 +489,12 @@ async function main(): Promise<void> {
   loadingFill.style.width = '100%'
   // The world is genuinely loaded. Draw one frame now so the first real frame under the fading
   // loading screen does not stall on shader compilation, then wait for SKIP TUTORIAL / START.
+  // The frame is drawn from the real chase-camera pose (not the default camera at the origin), so the
+  // geometry, textures and shadows the first driving view needs are uploaded to the GPU now, behind the
+  // loading screen, instead of as a ~1 s freeze the moment START is pressed. chaseCam anchors itself on
+  // its first update, so the first game frame lands on exactly the same pose as before.
+  updateCamMode(camMode, 0)
+  sky.update(0, camera)
   renderer.render(scene, camera)
   markLoaded()
   warmTrackDurations() // track lengths load while the tutorial is being read
