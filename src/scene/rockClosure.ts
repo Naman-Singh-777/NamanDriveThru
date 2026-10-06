@@ -177,6 +177,31 @@ const SEAMS = `-101.8,13.2,-1187.5,-111.9,15.2,-1187.5;
     90.1,46.1,-74.9,97.2,47.6,-75;
     97.2,47.6,-75,119.5,45.7,-75`
 
+// The port's north-west rock is cut off flat along z = -156.25 and shows its hollow inside from the north.
+// These rows follow the cut rim, west to east reversed so the outward side faces north.
+// The east side of that rock block is open as well, along x = -837.5.
+const PORT_SEAMS = `    -837.5,43.2,-156.25,-840.3,46.7,-156.25;
+    -840.3,46.7,-156.25,-844.2,44.6,-156.25;
+    -844.2,44.6,-156.25,-850.8,45.1,-156.25;
+    -850.8,45.1,-156.25,-852.5,42.8,-156.25;
+    -852.5,42.8,-156.25,-857.5,45.1,-156.25;
+    -857.5,45.1,-156.25,-864.4,43.4,-156.25;
+    -864.4,43.4,-156.25,-870.8,44.9,-156.25;
+    -870.8,44.9,-156.25,-877.2,45.8,-156.25;
+    -877.2,45.8,-156.25,-884.2,44.5,-156.25;
+    -884.2,44.5,-156.25,-890.8,44.2,-156.25;
+    -890.8,44.2,-156.25,-897.5,39.6,-156.25;
+    -897.5,39.6,-156.25,-901.1,36.9,-156.25;
+    -901.1,36.9,-156.25,-904.2,35.2,-156.25;
+    -904.2,35.2,-156.25,-910.8,34,-156.25;
+    -910.8,34,-156.25,-913.2,34.7,-156.25;
+    -913.2,34.7,-156.25,-917.5,28,-156.25;
+    -917.5,28,-156.25,-924.2,25.6,-156.25;
+    -924.2,25.6,-156.25,-930.8,17.3,-156.25;
+    -930.8,17.3,-156.25,-938.3,13.2,-156.25;
+    -837.5,49.2,-136,-837.5,51,-139;
+    -837.5,51,-139,-837.5,43.2,-156.25`
+
 const BOTTOM_Y = -8 // below the lowest wave trough, hidden by the water
 const INSET = 0.1 // wall sits just behind the lip so no sliver of the hollow shows at the top
 const CELL = 3.5 // grid size of the wall, in metres
@@ -222,7 +247,7 @@ export function applyRockClosure(root: THREE.Object3D): void {
 
   // Parse, drop zero-length rows and the near-duplicate rows left by the doubled terrain triangles.
   const seams: Seam[] = []
-  for (const s of SEAMS.split(';')) {
+  for (const s of (SEAMS + ';' + PORT_SEAMS).split(';')) {
     const r = s.trim().split(',').map(Number)
     if (r.length !== 6 || r.some((v) => !Number.isFinite(v))) continue
     const tx = r[3] - r[0]

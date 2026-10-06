@@ -590,6 +590,10 @@
     /* Pill chrome dissolves to transparent while the letters (below) smoke
        off independently -- the box doesn't move or scale, only fades. */
     #key-unlock-popup.is-poofing {
+      /* is-visible is dropped when the poof starts, so hold the pill fully shown here: otherwise its
+         base opacity:0 hides the letters and the puffs before the smoke-out can be seen. */
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
       transition: background 0.5s ease 0.2s, border-color 0.5s ease 0.2s,
                   box-shadow 0.5s ease 0.2s, backdrop-filter 0.5s ease 0.2s;
       background: rgba(16, 20, 30, 0);
