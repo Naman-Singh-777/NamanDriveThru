@@ -1,4 +1,5 @@
 import type { InputState } from './controls'
+import { initialFullscreenPending } from '../fullscreen'
 
 // On-screen touch controls for phones/tablets: a D-pad (accelerate/reverse/steer)
 // plus a separate brake button, both mutating the SAME InputState object the
@@ -63,7 +64,8 @@ function tryLockLandscapeOnce(): void {
     tried = true
     try {
       const el = document.documentElement as HTMLElement & { requestFullscreen?: () => Promise<void> }
-      if (document.fullscreenElement == null && el.requestFullscreen) {
+      // Only during the one-time initial entry: never re-request after it has settled or the visitor left.
+      if (initialFullscreenPending() && document.fullscreenElement == null && el.requestFullscreen) {
         await el.requestFullscreen().catch(() => {})
       }
       const orientation = screen.orientation as (ScreenOrientation & { lock?: (o: string) => Promise<void> }) | undefined
