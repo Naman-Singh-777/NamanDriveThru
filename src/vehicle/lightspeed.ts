@@ -39,6 +39,13 @@ const FAR_Z = -70
 const NEAR_Z = 2
 const TUNNEL_LENGTH = NEAR_Z - FAR_Z
 const MAX_SPEED = 140 // units/sec at the jump's peak
+// The jump's timeline only advances by this much per drawn frame, so a stall in the middle (a slow
+// frame, a GC pause) cannot skip over its ramp-up, cruise or drop-out. Normal frames are far shorter.
+const MAX_FRAME_STEP_MS = 100
+const MAX_MOVE_STEP_MS = 50 // the streaks' own per-frame travel keeps its original 50 ms cap
+// Hard stop, as a multiple of the duration after the first frame, so a very slow device is never held
+// in the transition for long.
+const MAX_WALL_FACTOR = 3
 
 interface StreakState {
   radius: number
@@ -58,6 +65,8 @@ let streakState: StreakState[] = []
 let coreMat: THREE.MeshBasicMaterial | null = null
 let streakMat: THREE.MeshBasicMaterial | null = null
 let rafId: number | null = null
+// Ends the play that is currently running (if any), so a restart never leaves its caller waiting.
+let endCurrent: (() => void) | null = null
 
 function onResize(): void {
   if (!renderer || !camera) return
@@ -147,44 +156,84 @@ function renderFrame(speed: number, dt: number, intensity: number): void {
   renderer.render(scene, camera)
 }
 
+// Builds the warp scene and uploads/compiles everything now, invisibly (opacity 0, container hidden), so the
+// first transition does not pay for WebGL setup and shader compilation inside its own timeline.
+export function warmLightspeed(): void {
+  try {
+    ensureScene()
+    renderFrame(0, 0, 0)
+  } catch {
+    // purely cosmetic: it is simply built on first use instead
+  }
+}
+
 export function playLightspeed(durationMs: number = DEFAULT_DURATION_MS): Promise<void> {
-  ensureScene()
+  try {
+    ensureScene()
+  } catch {
+    return Promise.resolve() // no WebGL for the flash: the menu still opens/closes
+  }
   const node = containerEl!
-  node.classList.add('is-active')
 
   if (rafId !== null) cancelAnimationFrame(rafId) // a rapid re-trigger restarts cleanly, no overlap
+  rafId = null
+  endCurrent?.() // the play being replaced resolves instead of hanging its caller
+  node.classList.add('is-active')
 
   return new Promise((resolve) => {
-    const start = performance.now()
-    let last = start
+    let done = false
+    const finish = (): void => {
+      if (done) return
+      done = true
+      endCurrent = null
+      rafId = null
+      node.classList.remove('is-active')
+      resolve()
+    }
+    endCurrent = finish
 
-    const tick = (now: number) => {
-      const elapsed = now - start
-      const dt = Math.min((now - last) / 1000, 0.05)
-      last = now
-      const t = Math.min(elapsed / durationMs, 1)
+    // The timeline starts at the first frame actually drawn, not at the call: whatever delays that frame
+    // (first-use setup, other work on the page) can no longer eat into the animation. From then on it
+    // advances by real time, capped per frame.
+    let firstNow = -1
+    let last = 0
+    let elapsed = 0
 
-      // Jump-to-light-speed-and-drop-out envelope: quick ramp up, a held
-      // cruise at full speed, then a quick ramp back down -- mirrors the
-      // tutorial's "accelerate into the tunnel" feel within a single second.
-      let intensity: number
-      if (t < 0.18) intensity = t / 0.18
-      else if (t < 0.8) intensity = 1
-      else intensity = Math.max(0, 1 - (t - 0.8) / 0.2)
-      const eased = intensity * intensity * (3 - 2 * intensity) // smoothstep
+    const tick = (now: number): void => {
+      try {
+        let stepMs = 0
+        if (firstNow < 0) {
+          firstNow = now
+        } else {
+          stepMs = Math.min(Math.max(now - last, 0), MAX_FRAME_STEP_MS)
+        }
+        last = now
+        elapsed += stepMs
+        const dt = Math.min(stepMs, MAX_MOVE_STEP_MS) / 1000
+        const t = Math.min(elapsed / durationMs, 1)
 
-      const opacity = Math.min(1, t < 0.1 ? t / 0.1 : t > 0.88 ? Math.max(0, (1 - t) / 0.12) : 1)
-      if (streakMat) streakMat.opacity = 0.9 * opacity
-      if (coreMat) coreMat.opacity = 0.55 * opacity
+        // Jump-to-light-speed-and-drop-out envelope: quick ramp up, a held
+        // cruise at full speed, then a quick ramp back down -- mirrors the
+        // tutorial's "accelerate into the tunnel" feel within a single second.
+        let intensity: number
+        if (t < 0.18) intensity = t / 0.18
+        else if (t < 0.8) intensity = 1
+        else intensity = Math.max(0, 1 - (t - 0.8) / 0.2)
+        const eased = intensity * intensity * (3 - 2 * intensity) // smoothstep
 
-      renderFrame(eased * MAX_SPEED, dt, eased)
+        const opacity = Math.min(1, t < 0.1 ? t / 0.1 : t > 0.88 ? Math.max(0, (1 - t) / 0.12) : 1)
+        if (streakMat) streakMat.opacity = 0.9 * opacity
+        if (coreMat) coreMat.opacity = 0.55 * opacity
 
-      if (t < 1) {
-        rafId = requestAnimationFrame(tick)
-      } else {
-        rafId = null
-        node.classList.remove('is-active')
-        resolve()
+        renderFrame(eased * MAX_SPEED, dt, eased)
+
+        if (t < 1 && now - firstNow < durationMs * MAX_WALL_FACTOR) {
+          rafId = requestAnimationFrame(tick)
+        } else {
+          finish()
+        }
+      } catch {
+        finish() // never leave the menu waiting on a failed frame
       }
     }
     rafId = requestAnimationFrame(tick)
