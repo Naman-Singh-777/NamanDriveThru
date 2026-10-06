@@ -9,15 +9,16 @@ const MAX_BRAKE_FORCE = 60
 //  - MAX_STEER: full road-wheel lock at a standstill, ~31.5 deg (real cars: 30-35 deg).
 //  - At speed the lock is limited by tyre grip, exactly the kinematic rule real
 //    steering follows: lateral accel = v^2 / R = v^2 * tan(delta) / wheelbase must stay
-//    under mu*g, so delta_max = atan(wheelbase * mu*g / v^2). World gravity is 24.5
-//    (see main.ts), mu 0.9 as on dry tarmac. This gives ~full lock below ~20 u/s, ~20 deg
-//    at 25 u/s, ~9 deg at 40 u/s, ~3 deg at the 70 u/s top speed.
+//    under a grip budget, so delta_max = atan(wheelbase * budget / v^2). World gravity is
+//    24.5 (see main.ts); the budget is 2.2 g of that (the world is scaled up, and a lower
+//    budget left no usable steering at speed). Full lock below ~32 u/s, ~16 deg at 45 u/s,
+//    ~7 deg at the 70 u/s top speed.
 //  - The wheel is turned by a "driver" at a limited hand speed (a real steering wheel
 //    takes ~1 s to go from centre to lock), soft-landing onto the target, and it
 //    self-centres about twice as fast when released (self-aligning torque).
 const MAX_STEER = 0.55
-const GRIP_ACCEL = 0.9 * 24.5
-const STEER_RATE_IN = 0.6 // rad/s, wheel turned into a corner
+const GRIP_ACCEL = 2.2 * 24.5
+const STEER_RATE_IN = 0.8 // rad/s, wheel turned into a corner
 const STEER_RATE_OUT = 1.2 // rad/s, wheel returning toward centre / unwinding
 const STEER_SOFT = 8 // 1/s, eases the wheel onto its target instead of stopping dead
 // Released-throttle (coast) brake: engine braking + rolling resistance, ~20 m/s^2 plus drag.
