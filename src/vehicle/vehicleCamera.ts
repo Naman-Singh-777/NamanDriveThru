@@ -26,8 +26,9 @@ export class VehicleCamera {
   }
 
   update(vehicle: Vehicle, colliders: THREE.Object3D[], dt: number): void {
-    const pos = vehicle.position
-    const quat = vehicle.quaternion
+    // Follow the pose the car is actually drawn at (interpolated), not the stepped physics pose.
+    const pos = vehicle.visualPosition
+    const quat = vehicle.visualQuaternion
     const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(quat)
     const up = new THREE.Vector3(0, 1, 0)
 
