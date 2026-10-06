@@ -18,6 +18,7 @@ import { OverviewCamera } from './vehicle/overviewCamera'
 import { OverviewLabels } from './vehicle/overviewLabels'
 import { createCheckpoints, updateCheckpoints, triggerActivation, type Checkpoint, type CheckpointDef, type CheckpointId } from './vehicle/checkpoint'
 import { playActivationChime } from './vehicle/checkpointAudio'
+import { warmLightspeed } from './vehicle/lightspeed'
 import { addRoadEndCaps, type RoadEndCapDef } from './scene/roadEndCaps'
 import { initOverlay, requestOpenOverlay, isOverlayOpen, isOverlayBusy, preloadOverlayData, warmTrackDurations } from './overlay'
 import { initFullscreen } from './fullscreen'
@@ -498,6 +499,7 @@ async function main(): Promise<void> {
   renderer.render(scene, camera)
   markLoaded()
   warmTrackDurations() // track lengths load while the tutorial is being read
+  warmLightspeed() // the checkpoint warp flash is built now, not inside its first transition
   await waitForStart()
   loadingEl.style.display = 'none'
   // WEB-PHASE-4 REDO Phase 13: on-screen touch controls (D-pad/brake/shortcut
