@@ -8,10 +8,23 @@ const MAX_BRAKE_FORCE = 60
 const MAX_STEER = 0.55
 // WEB-PHASE-4 REDO Phase 16: slightly reduced left/right steer sensitivity --
 // how fast steerAngle ramps toward targetSteer each frame in applyControls()
-// below (both into a turn and back to center). 6.0 -> 5.0 only; MAX_STEER
-// (the actual lock angle) is untouched, so this just softens how twitchy a
-// tap of A/D feels, it doesn't change how sharp the car can ultimately turn.
-const STEER_LERP = 5.0
+// below (both into a turn and back to center). 6.0 -> 5.0 -> 4.0; MAX_STEER
+// (the low-speed lock angle) is untouched; the speed-based limit below it is new.
+const STEER_LERP = 4.0
+// Steering softening: the lock angle shrinks as speed rises (a real steering
+// rack/driver does the same), so the car no longer snaps around at speed.
+// limit = MAX_STEER / (1 + (speed / STEER_FALLOFF_SPEED)^2): ~0.37 rad at
+// 10 m/s, ~0.28 at 20, ~0.14 at 40, full lock only when crawling.
+const STEER_FALLOFF_SPEED = 28
+// Released-throttle (coast) brake: engine braking + rolling resistance, ~20 m/s^2 plus drag.
+const COAST_BRAKE_FORCE = 15
+// Pedal braking: W/S pressed AGAINST the direction of travel is a brake, not a
+// reverse-thrust (a real driver brakes first). Rapier ignores wheel brake while
+// engine force is non-zero, so engine force is cut to 0 for these frames.
+// ~40 m/s^2 plus drag: ~1.3 s to stop from full speed, ~0.7 s from 30 m/s.
+const BRAKE_PEDAL_FORCE = 30
+const DIRECTION_DEADZONE = 1.0 // m/s: below this the car counts as stopped
+const REVERSE_MAX_SPEED = 14 // m/s: reversing top speed (engine fades out toward it)
 
 // WEB-PHASE-2/3F: one physics-step's worth of computed visual target
 // transforms (chassis root + all 4 wheels, in WORLD space). Two of these are
@@ -380,15 +393,35 @@ export class Vehicle {
   // that world.step() then integrates.
   applyControls(input: InputState, dt: number): void {
     this.lastDt = dt
-    const targetSteer = (input.left ? MAX_STEER : 0) - (input.right ? MAX_STEER : 0)
+    // signed speed along the car's own forward axis (+ = driving forward)
+    const lv = this.body.linvel()
+    const q = this.body.rotation()
+    const vF =
+      lv.x * 2 * (q.x * q.z + q.w * q.y) + lv.y * 2 * (q.y * q.z - q.w * q.x) + lv.z * (1 - 2 * (q.x * q.x + q.y * q.y))
+    const steerLimit = MAX_STEER / (1 + (vF / STEER_FALLOFF_SPEED) ** 2)
+    const targetSteer = (input.left ? steerLimit : 0) - (input.right ? steerLimit : 0)
     this.steerAngle += (targetSteer - this.steerAngle) * Math.min(1, STEER_LERP * dt)
 
     // Spacebar: dedicated hard brake -- overrides throttle/reverse (real cars
     // don't apply engine force while braking) and applies full MAX_BRAKE_FORCE to
     // all four wheels, instead of the mild coast-brake used when simply releasing
     // throttle with no brake input.
-    const engineForce = input.brake ? 0 : input.forward ? -MAX_ENGINE_FORCE : input.reverse ? MAX_ENGINE_FORCE * 0.6 : 0
-    const brake = input.brake ? MAX_BRAKE_FORCE : !input.forward && !input.reverse ? MAX_BRAKE_FORCE * 0.15 : 0
+    const pedalBraking = (input.forward && vF < -DIRECTION_DEADZONE) || (input.reverse && vF > DIRECTION_DEADZONE)
+    const reverseFade = vF < 0 ? Math.max(0, 1 - -vF / REVERSE_MAX_SPEED) : 1
+    const engineForce = input.brake || pedalBraking
+      ? 0
+      : input.forward
+        ? -MAX_ENGINE_FORCE
+        : input.reverse
+          ? MAX_ENGINE_FORCE * 0.6 * reverseFade
+          : 0
+    const brake = input.brake
+      ? MAX_BRAKE_FORCE
+      : pedalBraking
+        ? BRAKE_PEDAL_FORCE
+        : !input.forward && !input.reverse
+          ? COAST_BRAKE_FORCE
+          : 0
 
     // front wheels: steer + no drive torque (rear-wheel drive, matches a mid/rear-engine car)
     this.controller.setWheelSteering(0, this.steerAngle)
