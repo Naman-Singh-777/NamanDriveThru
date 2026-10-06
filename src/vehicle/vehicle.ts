@@ -12,8 +12,8 @@ const MAX_STEER = 0.52
 // angle 0.55 -> 0.52: the original fixed-lock, exponential-ramp steering with
 // only a very slight softening (no speed-based limiting).
 const STEER_LERP = 4.5
-// Released-throttle (coast) brake: engine braking + rolling resistance, ~27 m/s^2 plus drag.
-const COAST_BRAKE_FORCE = 20
+// Released-throttle (coast) brake: engine braking + rolling resistance, ~20 m/s^2 plus drag.
+const COAST_BRAKE_FORCE = 15
 // Pedal braking: W/S pressed AGAINST the direction of travel is a brake, not a
 // reverse-thrust (a real driver brakes first). Rapier ignores wheel brake while
 // engine force is non-zero, so engine force is cut to 0 for these frames.
@@ -582,17 +582,6 @@ export class Vehicle {
     const VISUAL_FRONT_OFFSET = 1.1163
     const VISUAL_REAR_OFFSET = 0.8912
 
-    // Ground contact (visual only, physics untouched): at rest the rendered car and its
-    // tyres hovered ~1.0 (front) / ~0.78 (rear) above the road, about a quarter of a tyre
-    // height, which read as detached, floaty tyres. The physics wheel (radius 1.50) and the
-    // arch-nested visual wheel (diameter 3.24, lifted by the offsets above) leave that gap.
-    // Dropping the whole rendered car, body and tyres together, keeps the arch nesting
-    // exactly as tuned and sits the tyres on the tarmac (rear pressed in ~0.1 like a loaded
-    // tyre, front ~0.15 clear, the most the front arch clearance allows).
-    const VISUAL_GROUND_DROP = 0.95
-
-    rootPos.y -= VISUAL_GROUND_DROP
-
     const wheelWorldPos: THREE.Vector3[] = []
     const wheelWorldQuat: THREE.Quaternion[] = []
 
@@ -634,7 +623,6 @@ export class Vehicle {
       const wheelLocalQuat = steerQuat.clone().multiply(spinQuat).multiply(this.wheelRestQuat[i])
 
       const worldPos = local.clone().applyQuaternion(bodyQuat).add(bodyPos)
-      worldPos.y -= VISUAL_GROUND_DROP
       const worldQuat = bodyQuat.clone().multiply(wheelLocalQuat)
 
       // WEB-FIX-11d/11f: pin the wheel's TRUE geometric center (full runtime
