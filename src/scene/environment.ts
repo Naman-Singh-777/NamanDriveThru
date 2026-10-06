@@ -9,6 +9,7 @@ import { buildShoreSim } from './shoreSim'
 import { makeGusts } from './swell'
 import { applyRockOverlay } from './rockDetail'
 import { applyRockClosure } from './rockClosure'
+import { applyRockFaceFix } from './rockFaceFix'
 
 // WEB-FIX-07: MAT_CLIFF/MAT_CLIFF.002 (76 exported meshes -- the dominant terrain
 // material) are procedural Blender node materials, confirmed by read-only inspection
@@ -269,6 +270,8 @@ export function loadEnvironment(
 
         // Walls for the rock seams that were left open (see rockClosure.ts).
         applyRockClosure(root)
+        // Port rock faces that showed their hollow back side (see rockFaceFix.ts).
+        applyRockFaceFix(root)
 
         const find = (name: string): THREE.Object3D => {
           const o = root.getObjectByName(name)

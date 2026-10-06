@@ -6,6 +6,7 @@ import { createLighting } from './scene/lighting'
 import { buildStaticColliders, isCameraObstacle } from './collision/staticColliders'
 import { buildRoadBoundaries, buildJunctionBoundaries } from './collision/roadBoundaries'
 import { buildStartRockBoundary } from './collision/startRockBoundary'
+import { applyObjectBounce } from './collision/objectBounce'
 import { Vehicle } from './vehicle/vehicle'
 import { createControls } from './vehicle/controls'
 import { bindTouchControls } from './vehicle/touchControls'
@@ -123,6 +124,8 @@ async function main(): Promise<void> {
   const world = new RAPIER.World({ x: 0, y: -24.5, z: 0 })
   const stats = buildStaticColliders(env.root, world)
   console.log('[colliders]', stats)
+  // Same soft bounce-back as the railings and road walls for lampposts, buildings and platform structure.
+  console.log('[object bounce]', applyObjectBounce(env.root, world))
 
   // WEB-PHASE-2/3B: road-side walls now stop before entering a major open
   // area's own footprint (Platform/Port/City) -- their existing railings/
