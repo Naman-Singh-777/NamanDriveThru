@@ -18,6 +18,7 @@ const fill = document.getElementById('loading-fill')
 const skip = document.getElementById('ld-skip') as HTMLButtonElement | null
 const skipText = document.getElementById('ld-skip-text')
 const next = document.getElementById('ld-next') as HTMLButtonElement | null
+const back = document.getElementById('ld-back') as HTMLButtonElement | null
 const footNote = document.getElementById('ld-foot-note')
 const stepsEl = document.getElementById('ld-steps')
 const dots = Array.from(document.querySelectorAll<HTMLElement>('#ld-dots span'))
@@ -107,6 +108,7 @@ function updateChrome(): void {
   steps.forEach((s, i) => s.classList.toggle('is-active', i === step))
   dots.forEach((d, i) => d.classList.toggle('on', i <= step))
   if (next) next.hidden = last
+  if (back) back.disabled = step === 0 // kept in place but invisible on the first step, so NEXT never moves
   const label = last ? 'START' : 'Skip tutorial'
   if (skipText) skipText.textContent = label
   skip?.style.setProperty('--content', `'${label}'`)
@@ -136,6 +138,14 @@ function goNext(): void {
   updateChrome()
   // the NEXT button disappears on the last step; hand focus to START when it exists
   if (step === STEP_COUNT - 1 && loaded && skip && !isTouch) skip.focus({ preventScroll: true })
+}
+
+function goBack(): void {
+  if (step <= 0) return
+  step--
+  updateChrome()
+  // BACK goes away on the first step; hand focus to NEXT so keyboard use carries on
+  if (step === 0 && next && !isTouch) next.focus({ preventScroll: true })
 }
 
 // ---------- scale the 640 x 480 scene to whatever the left 75% offers ----------
@@ -375,6 +385,7 @@ if (root && stage && sceneBox && action && skip && next) {
   mirrorProgress()
   updateChrome()
   next.addEventListener('click', goNext)
+  back?.addEventListener('click', goBack)
   skip.addEventListener('click', () => void launch())
   stepsEl?.addEventListener('scroll', updateScrollHint, { passive: true })
   if (!isTouch) next.focus({ preventScroll: true })

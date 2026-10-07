@@ -257,24 +257,35 @@
 #loading .ld-foot-note.is-ready { color: #89beb3; }
 
 /* NEXT: the supplied button, em-scaled so it fits the 25% panel. */
-#loading .ld-next {
+#loading .ld-nav { display: flex; align-items: center; align-self: flex-start; gap: 0.6em 1.1em; font-size: clamp(20px, 2.1vw, 30px); padding-left: 1.125em; /* room for BACK to grow into */ }
+#loading .ld-next, #loading .ld-back {
   display: inline-flex; align-self: flex-start; padding: 0.25em 1.125em; font-family: 'Poppins', sans-serif; font-style: italic; font-weight: 900;
   font-size: clamp(20px, 2.1vw, 30px); line-height: 1.4; color: #fff; background: #6225e6; border: 0; cursor: pointer;
   transition: 1s; box-shadow: 0.15em 0.15em 0 #000; transform: skewX(-15deg);
 }
-#loading .ld-next:focus { outline: none; }
-#loading .ld-next:focus-visible { outline: 2px solid #fbc638; outline-offset: 4px; }
+#loading .ld-next:focus, #loading .ld-back:focus { outline: none; }
+#loading .ld-next:focus-visible, #loading .ld-back:focus-visible { outline: 2px solid #fbc638; outline-offset: 4px; }
 #loading .ld-next:hover { transition: 0.5s; box-shadow: 0.25em 0.25em 0 #fbc638; }
 #loading .ld-next span { transform: skewX(15deg); }
 #loading .ld-next span:nth-child(2) { width: 0.5em; margin-left: 0.75em; position: relative; top: 12%; transition: 0.5s; margin-right: 0; }
 #loading .ld-next:hover span:nth-child(2) { transition: 0.5s; margin-right: 1.125em; }
-#loading .ld-next svg { width: 1.65em; height: 1.075em; overflow: visible; }
-#loading .ld-next path.one { transition: 0.4s; transform: translateX(-60%); }
-#loading .ld-next path.two { transition: 0.5s; transform: translateX(-30%); }
-#loading .ld-next:hover path.three { animation: ld-color-anim 1s infinite 0.2s; }
-#loading .ld-next:hover path.one { transform: translateX(0%); animation: ld-color-anim 1s infinite 0.6s; }
-#loading .ld-next:hover path.two { transform: translateX(0%); animation: ld-color-anim 1s infinite 0.4s; }
+#loading .ld-next svg, #loading .ld-back svg { width: 1.65em; height: 1.075em; overflow: visible; }
+#loading .ld-next path.one, #loading .ld-back path.one { transition: 0.4s; transform: translateX(-60%); }
+#loading .ld-next path.two, #loading .ld-back path.two { transition: 0.5s; transform: translateX(-30%); }
+#loading .ld-next:hover path.three, #loading .ld-back:hover path.three { animation: ld-color-anim 1s infinite 0.2s; }
+#loading .ld-next:hover path.one, #loading .ld-back:hover path.one { transform: translateX(0%); animation: ld-color-anim 1s infinite 0.6s; }
+#loading .ld-next:hover path.two, #loading .ld-back:hover path.two { transform: translateX(0%); animation: ld-color-anim 1s infinite 0.4s; }
 @keyframes ld-color-anim { 0% { fill: white; } 50% { fill: #fbc638; } 100% { fill: white; } }
+/* BACK: the same button turned around. It leans the other way, the shadow falls to the left, the chevrons are mirrored
+   and slide out to the left on hover. Its right edge stays put while it grows (the negative margin takes back what the
+   arrow's margin adds), so NEXT beside it never moves. It keeps its place, invisible, on the first step. */
+#loading .ld-back { transform: skewX(15deg); box-shadow: -0.15em 0.15em 0 #000; transition: box-shadow 1s, margin-left 0.5s; }
+#loading .ld-back:hover { box-shadow: -0.25em 0.25em 0 #fbc638; margin-left: -1.125em; transition: box-shadow 0.5s, margin-left 0.5s; }
+#loading .ld-back:disabled { visibility: hidden; pointer-events: none; }
+#loading .ld-back span { transform: skewX(-15deg); }
+#loading .ld-back span:nth-child(1) { width: 0.5em; margin-right: 0.75em; position: relative; top: 12%; transition: 0.5s; margin-left: 0; }
+#loading .ld-back:hover span:nth-child(1) { transition: 0.5s; margin-left: 1.125em; }
+#loading .ld-back svg { margin-left: -1.15em; transform: scaleX(-1); }
 
 /* device-specific copy */
 #loading:not(.is-touch) .only-touch { display: none !important; }
