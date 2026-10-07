@@ -20,7 +20,12 @@ const COAST_BRAKE_FORCE = 15
 // ~40 m/s^2 plus drag: ~1.3 s to stop from full speed, ~0.7 s from 30 m/s.
 const BRAKE_PEDAL_FORCE = 30
 const DIRECTION_DEADZONE = 1.0 // m/s: below this the car counts as stopped
-const REVERSE_MAX_SPEED = 14 // m/s: reversing top speed (engine fades out toward it)
+// The pedal and the coast brake used to switch on and off inside a single 1/60 s physics step, which made the
+// acceleration jump from 0 to ~34 m/s^2 (and from +34 to -42 on release) in one frame. That jolt is the jerk you
+// feel as roughness. They now slew over a short, fixed time instead. Forward and reverse use the same engine force.
+const THROTTLE_RISE_TIME = 0.15 // s: pedal from 0 to full
+const THROTTLE_FALL_TIME = 0.12 // s: pedal from full to 0 on release
+const COAST_RISE_TIME = 0.12 // s: coast brake from 0 to full, once the engine force is off
 
 // WEB-PHASE-2/3F: one physics-step's worth of computed visual target
 // transforms (chassis root + all 4 wheels, in WORLD space). Two of these are
@@ -42,6 +47,8 @@ export class Vehicle {
   readonly controller: RAPIER.DynamicRayCastVehicleController
   readonly wheelRadius: number
   private steerAngle = 0
+  private throttle = 0 // smoothed pedal: +1 = full forward, -1 = full reverse
+  private coast = 0 // smoothed coast brake, 0..1
   private wheelMeshes: THREE.Object3D[]
   private wheelRadii: number[]
   private localWheelPositions: THREE.Vector3[]
@@ -421,21 +428,22 @@ export class Vehicle {
     // all four wheels, instead of the mild coast-brake used when simply releasing
     // throttle with no brake input.
     const pedalBraking = (input.forward && vF < -DIRECTION_DEADZONE) || (input.reverse && vF > DIRECTION_DEADZONE)
-    const reverseFade = vF < 0 ? Math.max(0, 1 - -vF / REVERSE_MAX_SPEED) : 1
-    const engineForce = input.brake || pedalBraking
-      ? 0
-      : input.forward
-        ? -MAX_ENGINE_FORCE
-        : input.reverse
-          ? MAX_ENGINE_FORCE * 0.6 * reverseFade
-          : 0
-    const brake = input.brake
-      ? MAX_BRAKE_FORCE
-      : pedalBraking
-        ? BRAKE_PEDAL_FORCE
-        : !input.forward && !input.reverse
-          ? COAST_BRAKE_FORCE
-          : 0
+    const hardBrake = input.brake || pedalBraking
+    const pedalTarget = hardBrake ? 0 : input.forward ? 1 : input.reverse ? -1 : 0
+    if (hardBrake) {
+      this.throttle = 0 // braking cuts the engine at once, exactly as before
+    } else {
+      const rising = Math.abs(pedalTarget) > Math.abs(this.throttle)
+      const maxStep = dt / (rising ? THROTTLE_RISE_TIME : THROTTLE_FALL_TIME)
+      this.throttle += Math.max(-maxStep, Math.min(maxStep, pedalTarget - this.throttle))
+    }
+    // Rapier ignores wheel brake while engine force is non-zero, so the coast brake only starts to build once the
+    // engine force has eased to 0, then ramps in rather than switching on.
+    const coasting = !hardBrake && !input.forward && !input.reverse
+    if (!coasting) this.coast = 0
+    else if (this.throttle === 0) this.coast = Math.min(1, this.coast + dt / COAST_RISE_TIME)
+    const engineForce = -MAX_ENGINE_FORCE * this.throttle
+    const brake = input.brake ? MAX_BRAKE_FORCE : pedalBraking ? BRAKE_PEDAL_FORCE : COAST_BRAKE_FORCE * this.coast
 
     // front wheels: steer + no drive torque (rear-wheel drive, matches a mid/rear-engine car)
     this.controller.setWheelSteering(0, this.steerAngle)
