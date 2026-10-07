@@ -2,7 +2,7 @@
 
 > All rights reserved — shared publicly for portfolio review only. See [LICENSE](./LICENSE).
 
-# Naman Singh — Interactive 3D Driving Portfolio
+# Naman Singh : Interactive 3D Driving Portfolio
 
 Why scroll through a resume when you can drive through one? A Three.js + Rapier3D driving demo, built over a Blender-authored environment, that reaches projects, music, and contact links by exploring a 3D world instead of scrolling a page.
 
