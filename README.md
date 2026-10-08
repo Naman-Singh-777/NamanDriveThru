@@ -1,10 +1,10 @@
-**Live:** https://naman-singh-777.github.io/NamanDrives/
+**Live:** https://naman-singh-777.github.io/NamanDriveThru/
 
 > All rights reserved — shared publicly for portfolio review only. See [LICENSE](./LICENSE).
 
-# NamanDrives
+# NamanDriveThru
 
-*Sleep Was Not Consulted.* Naman Singh's interactive 3D driving portfolio (also written Naman Drives, previously NOT ANOTHER PORTFOLIO WEBSITE).
+*Sleep Was Not Consulted.* Naman Singh's interactive 3D driving portfolio (also written Naman Drive Thru, previously NOT ANOTHER PORTFOLIO WEBSITE).
 
 Why scroll through a resume when you can drive through one? A Three.js + Rapier3D driving demo, built over a Blender-authored environment, that reaches projects, music, and contact links by exploring a 3D world instead of scrolling a page.
 
