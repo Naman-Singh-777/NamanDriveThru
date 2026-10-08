@@ -599,7 +599,7 @@ async function main(): Promise<void> {
     {
       const prog = fly ? easeInOut(fly.t) : camMode === 'overview' ? 1 : 0
       const a = Math.min(1, Math.max(0, (prog - 0.7) / 0.3))
-      overviewLabels.update(camera, isOverlayOpen() ? 0 : a)
+      overviewLabels.update(camera, isOverlayOpen() ? 0 : a, activeCheckpoint)
     }
     if (isOverlayOpen()) {
       for (const cp of checkpoints) cp.promptEl.style.display = 'none'
