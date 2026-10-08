@@ -1,4 +1,4 @@
 Contact: mailto:namansinghfigo349@gmail.com
 Expires: 2027-10-04T00:00:00.000Z
 Preferred-Languages: en
-Canonical: https://naman-singh-777.github.io/Portfolio-Websiteeeee/.well-known/security.txt
+Canonical: https://naman-singh-777.github.io/NamanDrives/.well-known/security.txt

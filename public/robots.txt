@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://naman-singh-777.github.io/Portfolio-Websiteeeee/sitemap.xml
+Sitemap: https://naman-singh-777.github.io/NamanDrives/sitemap.xml
