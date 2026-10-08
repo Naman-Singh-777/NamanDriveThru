@@ -160,7 +160,7 @@ const PINNED_REPOS_FALLBACK: { name: string; description: string; href: string }
   { name: 'SmartStack', description: 'A system that reduces AI operational costs by 40-50% through query routing and resource optimization.', href: 'https://github.com/Naman-Singh-777/SmartStack' },
   { name: 'WhereAbouts_SE', description: 'Full-stack college event management platform (Next.js + Supabase) for student event discovery and registration.', href: 'https://github.com/Naman-Singh-777/WhereAbouts_SE' },
   { name: 'Career-Nexus', description: 'AI-powered career trajectory engine (Gemini) that parses resumes and builds learning roadmaps.', href: 'https://github.com/Naman-Singh-777/Career-Nexus' },
-  { name: 'Portfolio-Websiteeeee', description: 'This portfolio website.', href: 'https://github.com/Naman-Singh-777/Portfolio-Websiteeeee' }
+  { name: 'NamanDrives', description: 'This portfolio website.', href: 'https://github.com/Naman-Singh-777/NamanDrives' }
 ]
 
 async function fetchPortProjects(_username: string): Promise<{ name: string; description: string; href: string }[]> {
