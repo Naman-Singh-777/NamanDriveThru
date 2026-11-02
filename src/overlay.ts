@@ -135,37 +135,40 @@ function renderMessage(msg: string): string {
   return `<p class="checkpoint-overlay__empty">${escapeHtml(msg)}</p>`
 }
 
-// GitHub's public REST API has no unauthenticated "pinned repos" endpoint --
-// pinned items are GraphQL-only, and GraphQL requires a token this static
-// client-side site must never embed (see externalLinks.ts). We used the
-// no-auth, read-only community endpoint https://gh-pinned-repos.egoist.dev
-// (the same approach most "GitHub pinned repos" profile widgets use), but
-// WEB-PHASE-4 REDO Phase 9 confirmed that endpoint is dead (it 404'd on
-// every request back then) and WEB-PHASE-4 REDO Phase 18 confirmed it is
-// STILL dead, now failing one step earlier with a CORS rejection instead of
-// a 404 (the service itself is simply gone, not a rate limit or a config
-// issue on our side -- a dead, unreachable third party has nothing to do
-// with this site's own security). Calling fetch() against a confirmed-dead
-// host only produced a scary-looking (but harmless and already-caught)
-// console error on every Port visit for no benefit, so Phase 18 removed the
-// live attempt entirely. Port now renders the snapshot below directly --
-// the user's actual pinned repos as read directly off their public GitHub
-// profile page on 2026-10-03 -- which is NOT the Phase-6 "recently pushed"
-// fallback the user asked removed (that showed unrelated, non-pinned
-// repos); this is a cached copy of the real pinned list itself. Update this
-// array by hand if the pinned repos on github.com/Naman-Singh-777 ever
-// change, or restore a live fetch() call in fetchPortProjects() below if a
-// working replacement endpoint is ever found.
+// The Port "Projects" list follows the repositories pinned on the GitHub profile.
+// GitHub only exposes pinned items through GraphQL (needs a token, which a static
+// client must never hold) or the profile page itself (no CORS), and the CSP here is
+// connect-src 'self', so the browser cannot ask GitHub directly. Instead
+// scripts/fetch-pinned-repos.mjs reads the pinned list at build time into
+// pinned-repos.json (same origin) and the deploy workflow rebuilds on a schedule,
+// so the list is never more than a few hours behind the profile. The snapshot below
+// is only a last resort for when that file cannot be loaded.
 const PINNED_REPOS_FALLBACK: { name: string; description: string; href: string }[] = [
-  { name: 'SmartStack', description: 'A system that reduces AI operational costs by 40-50% through query routing and resource optimization.', href: 'https://github.com/Naman-Singh-777/SmartStack' },
-  { name: 'WhereAbouts_SE', description: 'Full-stack college event management platform (Next.js + Supabase) for student event discovery and registration.', href: 'https://github.com/Naman-Singh-777/WhereAbouts_SE' },
-  { name: 'Career-Nexus', description: 'AI-powered career trajectory engine (Gemini) that parses resumes and builds learning roadmaps.', href: 'https://github.com/Naman-Singh-777/Career-Nexus' },
-  { name: 'NamanDriveThru', description: 'This portfolio website.', href: 'https://github.com/Naman-Singh-777/NamanDriveThru' }
+  { name: 'Career-Nexus', description: 'AI career trajectory engine powered by Gemini. Parses your resume, researches real career paths with live search grounding, and builds a learning roadmap with ordered YouTube search links.', href: 'https://github.com/Naman-Singh-777/Career-Nexus' },
+  { name: 'NamanDriveThru', description: 'An interactive 3D portfolio you drive through instead of scroll. Built by a final-year B.Tech student allergic to boring resumes.', href: 'https://github.com/Naman-Singh-777/NamanDriveThru' },
+  { name: 'BEOS', description: '', href: 'https://github.com/Naman-Singh-777/BEOS' },
+  { name: 'MIDNIGHT777', description: 'HORROR GAME', href: 'https://github.com/Naman-Singh-777/MIDNIGHT777' },
+  { name: 'SmartStack01', description: '', href: 'https://github.com/Naman-Singh-777/SmartStack01' },
+  { name: 'Scaler-Typeform-Submission', description: '', href: 'https://github.com/Naman-Singh-777/Scaler-Typeform-Submission' }
 ]
 
 async function fetchPortProjects(_username: string): Promise<{ name: string; description: string; href: string }[]> {
-  // Confirmed dead (see comment above) -- served directly from the
-  // hand-maintained snapshot, no network round-trip, no console noise.
+  try {
+    const res = await fetch(new URL('pinned-repos.json', document.baseURI).href, { cache: 'no-cache' })
+    if (res.ok) {
+      const data = (await res.json()) as { repos?: unknown }
+      const repos = Array.isArray(data.repos) ? data.repos : []
+      const clean: { name: string; description: string; href: string }[] = []
+      for (const r of repos as Record<string, unknown>[]) {
+        if (typeof r?.name === 'string' && typeof r?.href === 'string' && r.href.startsWith('https://github.com/')) {
+          clean.push({ name: r.name, description: typeof r.description === 'string' ? r.description : '', href: r.href })
+        }
+      }
+      if (clean.length) return clean
+    }
+  } catch {
+    // fall through to the snapshot
+  }
   return PINNED_REPOS_FALLBACK
 }
 

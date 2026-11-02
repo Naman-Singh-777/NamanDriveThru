@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "node scripts/generate-music-manifest.mjs",
+    "predev": "node scripts/generate-music-manifest.mjs && node scripts/fetch-pinned-repos.mjs",
     "dev": "vite",
-    "prebuild": "node scripts/generate-music-manifest.mjs",
+    "prebuild": "node scripts/generate-music-manifest.mjs && node scripts/fetch-pinned-repos.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview"
   },

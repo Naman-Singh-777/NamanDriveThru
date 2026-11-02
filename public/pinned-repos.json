@@ -1,0 +1,34 @@
+{
+  "repos": [
+    {
+      "name": "Career-Nexus",
+      "description": "AI career trajectory engine powered by Gemini. Parses your resume, researches real career paths with live search grounding, and builds a learning roadmap with ordered YouTube search links.",
+      "href": "https://github.com/Naman-Singh-777/Career-Nexus"
+    },
+    {
+      "name": "NamanDriveThru",
+      "description": "An interactive 3D portfolio you drive through instead of scroll. Built by a final-year B.Tech student allergic to boring resumes.",
+      "href": "https://github.com/Naman-Singh-777/NamanDriveThru"
+    },
+    {
+      "name": "BEOS",
+      "description": "",
+      "href": "https://github.com/Naman-Singh-777/BEOS"
+    },
+    {
+      "name": "MIDNIGHT777",
+      "description": "HORROR GAME",
+      "href": "https://github.com/Naman-Singh-777/MIDNIGHT777"
+    },
+    {
+      "name": "SmartStack01",
+      "description": "",
+      "href": "https://github.com/Naman-Singh-777/SmartStack01"
+    },
+    {
+      "name": "Scaler-Typeform-Submission",
+      "description": "",
+      "href": "https://github.com/Naman-Singh-777/Scaler-Typeform-Submission"
+    }
+  ]
+}
