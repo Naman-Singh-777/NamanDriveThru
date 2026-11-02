@@ -8,11 +8,18 @@ import { NOISE_GLSL } from './glslCommon'
 // The ship keeps its exact geometry; it is scaled x4 about its own keel / quay-side
 // edge and moved out of the old slip onto open water along the quay front, so it
 // reads from the car on the upper apron. The slip between the two quay arms is
-// filled so the lower quay becomes one straight wharf, and the wharf gets what a
-// berth needs at that size: fenders, bollards, mooring lines and two end dolphins.
+// filled so the lower quay becomes one straight wharf, and the wharf is wrapped into
+// a U-shaped berth: a short wing of quay at each end of the front wall and an end
+// pier beside each end of the hull, so the ship lies inside the dock on three sides
+// (stern and head lines run to the piers). The berth has what it needs at that size:
+// fenders, bollards, mooring lines and pier-head lights. The west crane's boom is
+// carried out over a hold on a box jib, and the hoist load (trolley, cables,
+// spreader, container) is moved out on it, so the cargo comes down on the ship's
+// deck instead of the quay.
 // Everything added is new geometry under "Berth_" names (no name here matches a
-// collider or camera-obstacle pattern, and nothing existing is edited except the
-// four old mooring lines, which are hidden because their target moved).
+// collider or camera-obstacle pattern). The only existing objects touched are the
+// four old mooring lines, hidden because their target moved, and the crane hoist
+// load, which is repositioned.
 
 const SCALE = 4
 const CENTER_X = -750 // ship centre along the quay (quay spans -875..-625)
@@ -278,8 +285,6 @@ export function applyPortShip(root: THREE.Object3D): void {
   const steel = new THREE.MeshStandardMaterial({ color: 0x23272b, roughness: 0.6, metalness: 0.6 })
   const rubber = new THREE.MeshStandardMaterial({ color: 0x0e0f10, roughness: 0.95, metalness: 0 })
   const rope = new THREE.MeshStandardMaterial({ color: 0x7a6a4d, roughness: 1, metalness: 0 })
-  const timber = new THREE.MeshStandardMaterial({ color: 0x5a4630, roughness: 0.9, metalness: 0 })
-  patchMaterial(timber, 'timber', 0, 1, none, new THREE.Vector3(-750, 0, -250))
 
   // concrete: the existing quay material, same pattern continued
   const quayMat = quay.material as THREE.Material
@@ -317,34 +322,43 @@ export function applyPortShip(root: THREE.Object3D): void {
   }
   // bollards between the fenders
   const bollardX = gridX.slice(0, -1).map((x) => x + 12.5)
-  for (const x of bollardX) {
-    steelG.push(cyl(x, -213, DECK_Y, DECK_Y + 0.3, 1.2, 1.2, 14))
-    steelG.push(cyl(x, -213, DECK_Y + 0.3, DECK_Y + 1.6, 0.75, 0.75, 14))
-    steelG.push(cyl(x, -213, DECK_Y + 1.6, DECK_Y + 2.1, 1.05, 0.9, 14))
+  const bollard = (x: number, z: number): void => {
+    steelG.push(cyl(x, z, DECK_Y, DECK_Y + 0.3, 1.2, 1.2, 14))
+    steelG.push(cyl(x, z, DECK_Y + 0.3, DECK_Y + 1.6, 0.75, 0.75, 14))
+    steelG.push(cyl(x, z, DECK_Y + 1.6, DECK_Y + 2.1, 1.05, 0.9, 14))
   }
+  for (const x of bollardX) bollard(x, -213)
 
-  // end dolphins (timber piles under a concrete cap) just beyond the hull ends
+  // U-shaped berth: a wing of quay beyond each end of the front wall and an end pier beside
+  // each end of the hull, so the ship lies inside the dock on three sides. The wings stop
+  // short of the rock at the east corner (x -627..-620, z -206..-197).
   const hullBox = new THREE.Box3().setFromObject(hull)
   const axisZ = (hullBox.min.z + hullBox.max.z) / 2
-  const dolphinX = [hullBox.min.x - 12, hullBox.max.x + 12]
-  const timberG: THREE.BufferGeometry[] = []
-  const dolphinTop: THREE.Vector3[] = []
-  for (const dx of dolphinX) {
-    timberG.push(cyl(dx, axisZ, -14, 11.6, 0.9))
-    for (let k = 0; k < 6; k++) {
-      const a = (k / 6) * Math.PI * 2
-      timberG.push(cyl(dx + Math.cos(a) * 2.6, axisZ + Math.sin(a) * 2.6, -14, 11.6, 0.8))
+  const PIER_W = 22
+  const PIER_GAP = 8 // hull tip to pier face, room for the end fenders
+  const PIER_END = hullBox.min.z - 12 // seaward end of the piers
+  const WING_Z = -208
+  const wIn = hullBox.min.x - PIER_GAP
+  const eIn = hullBox.max.x + PIER_GAP
+  const deckTop = DECK_Y - 0.04
+  conc(box(wIn - PIER_W, -875.6, -6, deckTop, FRONT_Z - 0.15, WING_Z)) // west wing
+  conc(box(wIn - PIER_W, wIn, -6, deckTop, PIER_END, FRONT_Z - 0.15)) // west pier
+  conc(box(-624.4, eIn + PIER_W, -6, deckTop, FRONT_Z - 0.15, WING_Z)) // east wing
+  conc(box(eIn, eIn + PIER_W, -6, deckTop, PIER_END, FRONT_Z - 0.15)) // east pier
+  // end fenders on the pier faces, bollards behind them, a light pole at each pier head
+  const pierLamps: THREE.Vector3[] = []
+  for (const [face, dir] of [[wIn, 1], [eIn, -1]] as Array<[number, number]>) {
+    for (const k of [-12, 0, 12]) {
+      const f = new THREE.CapsuleGeometry(2.2, 6, 4, 12)
+      f.translate(face + dir * 2.3, 3, axisZ + k)
+      rubberG.push(f)
     }
-    conc(cyl(dx, axisZ, 11.3, 12.6, 4, 4, 20))
-    for (const off of [-1.6, 1.6]) {
-      steelG.push(cyl(dx + off, axisZ, 12.6, 13.2, 0.9, 0.9, 12))
-      steelG.push(cyl(dx + off, axisZ, 13.2, 14.6, 0.6, 0.6, 12))
-      steelG.push(cyl(dx + off, axisZ, 14.6, 15.1, 0.85, 0.75, 12))
-    }
-    dolphinTop.push(new THREE.Vector3(dx, 15.1, axisZ))
+    for (const bz of [axisZ - 22, axisZ + 22]) bollard(face - dir * 3.5, bz)
+    const cx = face - (dir * PIER_W) / 2
+    steelG.push(cyl(cx, PIER_END + 3, DECK_Y, DECK_Y + 9, 0.35, 0.28, 8))
+    pierLamps.push(new THREE.Vector3(cx, DECK_Y + 9.6, PIER_END + 3))
   }
-
-  // mooring lines: ray from a bollard (or dolphin) to the hull, the line ends on the hull surface
+  // mooring lines: ray from a bollard to the hull, the line ends on the hull surface
   const ray = new THREE.Raycaster()
   const ropeG: THREE.BufferGeometry[] = []
   const line = (from: THREE.Vector3, aim: THREE.Vector3, ok?: (pts: THREE.Vector3[]) => boolean): void => {
@@ -370,18 +384,18 @@ export function applyPortShip(root: THREE.Object3D): void {
     if (rb.min.z < -200 && rb.max.y < 30 && rb.max.y > 10) rails.push(rb.expandByScalar(0.4))
   })
   const clearOfRails = (pts: THREE.Vector3[]): boolean => pts.every((q) => rails.every((rb) => !rb.containsPoint(q)))
-  const aimAt = (x: number): THREE.Vector3 => new THREE.Vector3(x, fairY, axisZ)
+  const aimAt = (x: number, z = axisZ): THREE.Vector3 => new THREE.Vector3(x, fairY, z)
   line(top(-774.5, -213), aimAt(-770.5), clearOfRails) // breast
   line(top(-724.5, -213), aimAt(-728.5), clearOfRails) // breast
   line(top(-799.5, -213), aimAt(-689.5), clearOfRails) // spring, leads forward
   line(top(-699.5, -213), aimAt(-809.5), clearOfRails) // spring, leads aft
-  line(dolphinTop[0].clone().setY(14.6), aimAt(hullBox.min.x + 8)) // stern line
-  line(dolphinTop[1].clone().setY(14.6), aimAt(hullBox.max.x - 8)) // head line
-
+  line(top(wIn - 3.5, axisZ - 22), aimAt(hullBox.min.x + 6, axisZ - 8)) // stern lines to the west pier
+  line(top(wIn - 3.5, axisZ + 22), aimAt(hullBox.min.x + 6, axisZ + 8))
+  line(top(eIn + 3.5, axisZ - 22), aimAt(hullBox.max.x - 16, axisZ - 2)) // head lines to the east pier
+  line(top(eIn + 3.5, axisZ + 22), aimAt(hullBox.max.x - 16, axisZ + 2))
   addMesh(works, 'Berth_Concrete', concrete, quayMat)
   addMesh(works, 'Berth_Fenders', rubberG, rubber)
   addMesh(works, 'Berth_Steel', steelG, steel)
-  addMesh(works, 'Berth_Timber', timberG, timber)
   addMesh(works, 'Berth_Lines', ropeG, rope)
 
   // 4. running lights (emissive only, no extra light sources)
@@ -415,7 +429,74 @@ export function applyPortShip(root: THREE.Object3D): void {
   lightAt('Berth_LampFore', new THREE.Vector3((fore.min.x + fore.max.x) / 2, fore.max.y + 0.8, (fore.min.z + fore.max.z) / 2), 0xfff1d0)
   lightAt('Berth_LampStbd', new THREE.Vector3(bc.x, bridge.min.y + 1.2, bridge.max.z + 0.6), 0x33ff66)
   lightAt('Berth_LampPort', new THREE.Vector3(bc.x, bridge.min.y + 1.2, bridge.min.z - 0.6), 0xff3322)
-  for (const t of dolphinTop) lightAt('Berth_LampDolphin', t.clone().setY(15.6), 0xff5a3c)
+  pierLamps.forEach((q, i) => lightAt('Berth_LampPier', q, i === 0 ? 0xff3322 : 0x33ff66))
 
+  // 5. west crane: the boom is carried out over a hold on a box jib with a mast and stays, and
+  // the existing hoist load is moved out on it, so the container comes down on the ship's deck
+  root.updateMatrixWorld(true)
+  const crane = root.getObjectByName('Port_Crane_02_ProcMesh_v3') as THREE.Mesh | undefined
+  const loadNames = ['Crane01_Trolley', 'Crane01_SpreaderBar', 'Crane01_SuspendedContainer', 'Crane01_HoistCable_0', 'Crane01_HoistCable_1', 'Crane01_HoistCable_2', 'Crane01_HoistCable_3']
+  const lo = loadNames.map((n) => root.getObjectByName(n))
+  const hold = ['Ship_HoldCargo_H1_1', 'Ship_HoldCargo_H1_2'].map((n) => root.getObjectByName(n))
+  if (crane && lo.every(Boolean) && hold.every(Boolean)) {
+    const cb = new THREE.Box3().setFromObject(crane)
+    const cbx = (cb.min.x + cb.max.x) / 2
+    const tipZ = cb.min.z
+    let topY = -Infinity // top of the existing boom at its tip
+    const cp = crane.geometry.getAttribute('position')
+    const tv = new THREE.Vector3()
+    for (let i = 0; i < cp.count; i++) {
+      tv.fromBufferAttribute(cp, i).applyMatrix4(crane.matrixWorld)
+      if (tv.z < tipZ + 0.2 && tv.y > topY) topY = tv.y
+    }
+    const [trolley, spreader, container, ...cables] = lo as THREE.Mesh[]
+    const hb = hold.map((h) => new THREE.Box3().setFromObject(h as THREE.Object3D))
+    const deckY = Math.max(hb[0].max.y, hb[1].max.y) + 0.4
+    const loadZ = (hb[0].min.z + hb[0].max.z) / 2
+    const cBox = new THREE.Box3().setFromObject(container)
+    const cc = cBox.getCenter(new THREE.Vector3())
+    const dx = cbx - cc.x
+    const dz = loadZ - cc.z
+    const zEnd = loadZ - 4.5
+    const beamBot = topY - 2.6
+    const railBot = beamBot - 0.5
+    const shift = (o: THREE.Object3D, dy: number): void => {
+      o.position.x += dx
+      o.position.y += dy
+      o.position.z += dz
+    }
+    shift(container, deckY - cBox.min.y)
+    shift(spreader, deckY - cBox.min.y)
+    shift(trolley, railBot - new THREE.Box3().setFromObject(trolley).max.y)
+    const spTop = new THREE.Box3().setFromObject(spreader).max.y
+    const trBot = new THREE.Box3().setFromObject(trolley).min.y
+    for (const c of cables) {
+      shift(c, 0)
+      const b = new THREE.Box3().setFromObject(c)
+      c.scale.y *= (trBot - spTop) / (b.max.y - b.min.y)
+      c.position.y += trBot - new THREE.Box3().setFromObject(c).max.y
+    }
+
+    const jib: THREE.BufferGeometry[] = [
+      box(cbx - 1.6, cbx + 1.6, beamBot, topY, zEnd, tipZ + 0.5), // box girder
+      box(cbx - 0.7, cbx + 0.7, railBot, beamBot, zEnd, tipZ + 0.5), // trolley rail
+      box(cbx - 0.7, cbx + 0.7, topY, topY + 14, tipZ - 3.2, tipZ - 1.8), // mast
+      box(cbx - 1.9, cbx + 1.9, beamBot - 0.2, topY + 0.2, zEnd - 0.4, zEnd + 0.2) // end cap
+    ]
+    for (let z = tipZ - 9; z > zEnd + 3; z -= 9) jib.push(box(cbx - 1.9, cbx + 1.9, beamBot - 0.2, topY + 0.2, z - 0.3, z + 0.3))
+    const mastTop = new THREE.Vector3(cbx, topY + 14, tipZ - 2.5)
+    const stays: THREE.BufferGeometry[] = []
+    const stay = (to: THREE.Vector3): void => {
+      stays.push(new THREE.TubeGeometry(new THREE.LineCurve3(mastTop, to), 2, 0.16, 5, false))
+    }
+    stay(new THREE.Vector3(cbx, topY + 0.1, zEnd + 1))
+    stay(new THREE.Vector3(cbx, topY + 0.1, (zEnd + tipZ) / 2 - 6))
+    const back = new THREE.Raycaster(new THREE.Vector3(cbx, topY + 30, tipZ + 55), new THREE.Vector3(0, -1, 0))
+    const bh = back.intersectObject(crane, false)[0]
+    if (bh) stay(bh.point)
+    addMesh(works, 'Berth_Jib', jib, crane.material as THREE.Material)
+    addMesh(works, 'Berth_JibStays', stays, steel)
+    lightAt('Berth_LampJib', new THREE.Vector3(cbx, topY + 0.8, zEnd + 0.8), 0xff3322)
+  }
   root.updateMatrixWorld(true)
 }
