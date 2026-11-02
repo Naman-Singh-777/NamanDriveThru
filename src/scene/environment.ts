@@ -4,6 +4,7 @@ import { applyPortRailFix } from './portRailFix'
 import { applyCityRailFix } from './cityRailFix'
 import { applyOceanMaterial } from './ocean'
 import { applyProceduralMaterials } from './proceduralMaterials'
+import { applyPortShip } from './portShip'
 import { applyBuildingLights } from './buildingLights'
 import { buildShoreSim } from './shoreSim'
 import { makeGusts } from './swell'
@@ -244,6 +245,7 @@ export function loadEnvironment(
           }
         })
         applyProceduralMaterials(root)
+        applyPortShip(root)
 
         // Extra rock texture and the wet band from the wash simulation, on top of the existing rock
         // colours: the cliff ramp above, and the flat terrain / headland colours.
